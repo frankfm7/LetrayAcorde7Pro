@@ -1,2 +1,2 @@
-# LetrayAcorde7Pro
+# LetraAcorde7Pro
 letras y acordes en un sololugar

@@ -30,6 +30,9 @@ import TextSlide from './components/TextSlide';
 import WebSearchPage from './components/WebSearchPage';
 import PresentationOrderModal from './components/PresentationOrderModal';
 import ChordDiagram from './components/ChordDiagram';
+import LoginButton from './components/LoginButton';
+import { AuthProvider } from './context/AuthContext';
+import { supabase } from './lib/supabase';
 import PageBack, { BackContext } from './components/PageBack';
 import BackgroundLayer from './components/BackgroundLayer';
 import BackgroundsPage from './components/BackgroundsPage';
@@ -45,9 +48,11 @@ import { getDisplayCode } from './utils/search';
 export default function App() {
   return (
     <NotificationProvider>
-      <AppProvider>
-        <AppContent />
-      </AppProvider>
+      <AuthProvider>
+        <AppProvider>
+          <AppContent />
+        </AppProvider>
+      </AuthProvider>
     </NotificationProvider>
   );
 }
@@ -94,6 +99,16 @@ function AppContent() {
     const onFs = () => { if (!document.fullscreenElement) setImmersive(false); };
     document.addEventListener('fullscreenchange', onFs);
     return () => document.removeEventListener('fullscreenchange', onFs);
+  }, []);
+
+  // Regreso de Google: Supabase deja la sesión en la URL (#access_token… o ?code=…); se lee, se limpia la URL y se va al inicio
+  useEffect(() => {
+    const { hash, search } = window.location;
+    if (!/access_token=|[?&]code=|error_description=/.test(hash + search)) return;
+    supabase.auth.getSession().finally(() => {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      setCurrentPage('home');
+    });
   }, []);
 
   // Fondo de pantalla según lo que se esté viendo (app, lista de un cancionero o letra)
@@ -533,22 +548,7 @@ function Layout({ children, currentPage, onNavigate, onImport, onExport, onTools
           <div className="flex items-center gap-2">
             <button onClick={() => onNavigate('search')} className="p-1.5 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}><Search size={16} /></button>
             <button onClick={() => setTheme(state.preferences.theme === 'dark' ? 'light' : 'dark')} className="p-1.5 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}>{state.preferences.theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
-            <button 
-              onClick={() => onNavigate('profile')}
-              className="flex items-center gap-2 p-1.5 pr-3 rounded-xl transition-all hover:opacity-80"
-              style={{ backgroundColor: 'var(--bg-tertiary)' }}
-            >
-              <div className="w-7 h-7 rounded-full overflow-hidden flex items-center justify-center" style={{ backgroundColor: 'var(--accent-light)' }}>
-                {userProfile?.avatar ? (
-                  <img src={userProfile.avatar} alt="Avatar" className="w-full h-full object-cover" />
-                ) : (
-                  <User size={14} style={{ color: 'var(--accent)' }} />
-                )}
-              </div>
-              <span className="text-xs font-semibold hidden sm:block" style={{ color: 'var(--text-primary)' }}>
-                {userProfile?.name || 'Usuario'}
-              </span>
-            </button>
+            <LoginButton onOpenProfile={() => onNavigate('profile')} />
           </div>
         </div>
       </header>}

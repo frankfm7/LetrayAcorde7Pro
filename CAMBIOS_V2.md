@@ -243,3 +243,9 @@ utils/songFormats.ts, utils/songText.ts, utils/backgroundStore.ts, components/Ba
 
 - **Diapositiva de título** antes de cada canción en la presentación (4 s o al tocar): título, artista, responsable, ministerio, tono/compás/BPM y numeración propia. Las canciones de una lista/orden arrancan solas (título → secciones → siguiente elemento); los textos se muestran directo y avanzan al tocar la pantalla. Campo nuevo "Ministerio" en el editor de elementos de la orden.
 - **Buscador**: al elegir "Todos" o un cancionero, las canciones salen en orden natural (numeración propia o número de orden: 1, 2, 3 … 10, 11). Misma lógica en "Agregar canciones" y en la lista de cada cancionero.
+
+---
+
+# Versión 2.17
+
+- **Login con Google (Supabase)**: `src/lib/supabase.ts`, `src/context/AuthContext.tsx` (AuthProvider + useAuth), `src/components/LoginButton.tsx`; el botón del encabezado ahora es "Iniciar sesión" (o foto + nombre, con menú: perfil y cerrar sesión). Todo lo local (localStorage) sigue igual. Dependencia nueva: `@supabase/supabase-js`.

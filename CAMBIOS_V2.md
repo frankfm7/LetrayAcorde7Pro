@@ -271,3 +271,9 @@ alter table community_songs enable row level security;
 create policy "leer" on community_songs for select to authenticated using (true);
 create policy "subir" on community_songs for insert to authenticated with check (auth.uid() = created_by);
 ```
+
+---
+
+# Versión 2.19
+
+- **Himnarios Oficiales**: `src/lib/officialHymnals.ts`, `src/pages/OfficialHymnalsPage.tsx`, acceso en Menú+ (solo con sesión), tercera pestaña en Buscar. `AuthContext` ahora expone `isAdmin` (lee `profiles.is_admin`). SQL de `official_songs` y sus reglas RLS en `supabase_official_songs.sql`.

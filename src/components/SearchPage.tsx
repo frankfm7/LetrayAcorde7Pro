@@ -1,7 +1,7 @@
 import PageBack from './PageBack';
 import { sortSongsNatural } from '../utils/hymnalInfo';
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
-import { Search, Star, X, ListMusic, Cloud, Download, Loader2 } from 'lucide-react';
+import { Search, Star, X, ListMusic, Cloud, Download, Loader2, BookMarked } from 'lucide-react';
 import { Song } from '../types';
 import { useApp } from '../context/AppContext';
 import { useSongLibrary } from '../hooks/useSongLibrary';
@@ -10,6 +10,7 @@ import Highlight from './Highlight';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from './NotificationProvider';
 import { signInWithGoogle } from '../lib/auth';
+import { searchOfficialSongs, officialToSong, OfficialSong } from '../lib/officialHymnals';
 import { searchCommunitySongs, communityRowToSong, CommunitySongRow } from '../lib/communitySongs';
 import { generateSongCode, getNextSongNumber, songs as defaultSongs } from '../data/songs';
 import { uid } from '../utils/listUtils';
@@ -48,6 +49,11 @@ export default function SearchPage({ onSelectSong, onAddToList, onSearchWeb }: P
   const { showNotification } = useNotification();
   // Buscar en la nube (tabla community_songs de Supabase)
   const [cloud, setCloud] = useState(false);
+  // Himnarios oficiales (tabla official_songs)
+  const [official, setOfficial] = useState(false);
+  const [officialRows, setOfficialRows] = useState<OfficialSong[]>([]);
+  const [officialLoading, setOfficialLoading] = useState(false);
+  const [officialError, setOfficialError] = useState('');
   const [cloudRows, setCloudRows] = useState<CommunitySongRow[]>([]);
   const [cloudLoading, setCloudLoading] = useState(false);
   const [cloudError, setCloudError] = useState('');
@@ -85,6 +91,34 @@ export default function SearchPage({ onSelectSong, onAddToList, onSearchWeb }: P
     }, 400);
     return () => { active = false; window.clearTimeout(t); };
   }, [cloud, user, query]);
+
+  useEffect(() => {
+    if (!official || !user) return;
+    const q = query.trim();
+    if (!q) { setOfficialRows([]); setOfficialError(''); return; }
+    let active = true;
+    setOfficialLoading(true);
+    const t = window.setTimeout(async () => {
+      try {
+        const rows = await searchOfficialSongs(q);
+        if (active) { setOfficialRows(rows); setOfficialError(''); }
+      } catch (e) {
+        if (active) { setOfficialRows([]); setOfficialError(e instanceof Error ? e.message : 'No se pudo consultar'); }
+      } finally {
+        if (active) setOfficialLoading(false);
+      }
+    }, 400);
+    return () => { active = false; window.clearTimeout(t); };
+  }, [official, user, query]);
+
+  const saveOfficialSong = (row: OfficialSong) => {
+    const hymnal = hymnals.find(h => h.id === 'mis-canciones') || hymnals[0];
+    if (!hymnal) return;
+    const number = getNextSongNumber(hymnal.id, [...defaultSongs, ...state.customSongs]);
+    const base = officialToSong(row, row.official_hymnals?.name || 'Himnario oficial', hymnal.id);
+    addCustomSong({ ...base, id: uid(), number, code: generateSongCode(hymnal, number), notes: 'Descargada de un himnario oficial' });
+    showNotification('Canción guardada en tu cancionero', 'success');
+  };
 
   const saveCloudSong = (row: CommunitySongRow) => {
     const hymnal = hymnals.find(h => h.id === 'mis-canciones') || hymnals[0];
@@ -143,9 +177,10 @@ export default function SearchPage({ onSelectSong, onAddToList, onSearchWeb }: P
         )}
       </div>
 
-      <div className="inline-flex p-1 rounded-xl gap-1" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-        <button onClick={() => setCloud(false)} className="px-3 py-1.5 rounded-lg text-xs font-bold" style={{ backgroundColor: !cloud ? 'var(--card-bg)' : 'transparent', color: !cloud ? 'var(--accent)' : 'var(--text-muted)' }}>Mis canciones</button>
-        <button onClick={() => setCloud(true)} className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5" style={{ backgroundColor: cloud ? 'var(--card-bg)' : 'transparent', color: cloud ? 'var(--accent)' : 'var(--text-muted)' }}><Cloud size={13} /> Buscar en la Nube</button>
+      <div className="flex p-1 rounded-xl gap-1 max-w-full overflow-x-auto" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+        <button onClick={() => { setCloud(false); setOfficial(false); }} className="px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap flex-shrink-0" style={{ backgroundColor: !cloud && !official ? 'var(--card-bg)' : 'transparent', color: !cloud && !official ? 'var(--accent)' : 'var(--text-muted)' }}>Mis canciones</button>
+        <button onClick={() => { setCloud(true); setOfficial(false); }} className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 whitespace-nowrap flex-shrink-0" style={{ backgroundColor: cloud ? 'var(--card-bg)' : 'transparent', color: cloud ? 'var(--accent)' : 'var(--text-muted)' }}><Cloud size={13} /> Buscar en la Nube</button>
+        <button onClick={() => { setOfficial(true); setCloud(false); }} className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 whitespace-nowrap flex-shrink-0" style={{ backgroundColor: official ? 'var(--card-bg)' : 'transparent', color: official ? 'var(--accent)' : 'var(--text-muted)' }}><BookMarked size={13} /> Himnarios Oficiales</button>
       </div>
 
       {cloud && (
@@ -180,7 +215,39 @@ export default function SearchPage({ onSelectSong, onAddToList, onSearchWeb }: P
         </div>
       )}
 
-      <div className={cloud ? 'hidden' : 'space-y-4'}>
+      {official && (
+        <div className="space-y-2">
+          {!user ? (
+            <div className="rounded-2xl p-4 text-center" style={{ backgroundColor: 'var(--accent-light)', border: '1px solid var(--border-color)' }}>
+              <p className="text-sm font-bold mb-3" style={{ color: 'var(--accent)' }}>Inicia sesión para buscar en los himnarios oficiales</p>
+              <button onClick={async () => { const err = await signInWithGoogle(); if (err) showNotification(err, 'error'); }} className="px-4 py-2 rounded-xl text-sm font-bold text-white bg-purple-600 hover:bg-purple-700">Iniciar sesión con Google</button>
+            </div>
+          ) : !query.trim() ? (
+            <p className="text-sm text-center py-8" style={{ color: 'var(--text-muted)' }}>Escribe el título, el artista o el número del himno.</p>
+          ) : officialLoading ? (
+            <p className="text-sm text-center py-8 flex items-center justify-center gap-2" style={{ color: 'var(--text-muted)' }}><Loader2 size={16} className="animate-spin" /> Buscando…</p>
+          ) : officialError ? (
+            <p className="text-sm text-center py-6 text-red-500">No se pudo buscar: {officialError}</p>
+          ) : officialRows.length === 0 ? (
+            <p className="text-sm text-center py-8" style={{ color: 'var(--text-muted)' }}>No hay himnos oficiales con “{query.trim()}”.</p>
+          ) : (
+            <>
+              <div className="text-sm font-semibold" style={{ color: 'var(--text-muted)' }}>{officialRows.length} en himnarios oficiales</div>
+              {officialRows.map(row => (
+                <div key={row.id} className="flex items-center gap-2 p-3 rounded-2xl border" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)', boxShadow: 'var(--card-shadow)' }}>
+                  <button onClick={() => onSelectSong(officialToSong(row, row.official_hymnals?.name || 'Himnario oficial', hymnals[0]?.id || 'mis-canciones'))} className="flex-1 text-left min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">{row.number && <span className="badge" translate="no">N° {row.number}</span>}<span className="font-bold text-sm truncate"><Highlight text={row.title} query={query} /></span></div>
+                    <div className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{[row.official_hymnals?.name, row.artist].filter(Boolean).join(' • ')}</div>
+                  </button>
+                  <button onClick={() => saveOfficialSong(row)} className="icon-btn" aria-label="Guardar en mi cancionero" title="Guardar en mi cancionero"><Download size={18} /></button>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+
+      <div className={cloud || official ? 'hidden' : 'space-y-4'}>
       {hymnals.length > 1 && (
         <div className="flex gap-2 overflow-x-auto pb-1">
           <button className="chip" data-active={hymnalId === 'all'} onClick={() => { setHymnalId('all'); setLimit(PAGE); }}>Todos</button>

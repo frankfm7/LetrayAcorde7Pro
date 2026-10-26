@@ -31,6 +31,7 @@ import WebSearchPage from './components/WebSearchPage';
 import PresentationOrderModal from './components/PresentationOrderModal';
 import ChordDiagram from './components/ChordDiagram';
 import LoginButton from './components/LoginButton';
+import OfficialHymnalsPage from './pages/OfficialHymnalsPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { shareSongToCommunity } from './lib/communitySongs';
 import { supabase } from './lib/supabase';
@@ -505,6 +506,7 @@ function AppContent() {
     switch (currentPage) {
       case 'home': return <HomePage onSelectSong={handleSelectSong} onSelectHymnal={handleSelectHymnal} onSearch={() => handleNavigate('search')} onAddHymnal={() => setShowAddHymnalModal(true)} />;
       case 'search': return withBack(<SearchPage onSelectSong={handleSelectSong} onAddToList={(song: Song) => setSongToAdd(song)} onSearchWeb={(q: string) => { setWebQuery(q); setCurrentPage('websearch'); }} />);
+      case 'official': return withBack(<OfficialHymnalsPage onSelectSong={handleSelectSong} />);
       case 'backgrounds': return withBack(<BackgroundsPage />);
       case 'websearch': return withBack(<WebSearchPage key={webQuery} initialQuery={webQuery} onDone={() => setCurrentPage('home')} />);
       case 'favorites': return withBack(<FavoritesPage onSelectSong={handleSelectSong} />);

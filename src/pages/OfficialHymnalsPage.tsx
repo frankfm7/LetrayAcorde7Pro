@@ -3,6 +3,7 @@ import { BookMarked, ChevronLeft, Edit3, Plus, Trash2, X, Loader2 } from 'lucide
 import PageBack from '../components/PageBack';
 import ConfirmModal from '../components/ConfirmModal';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
 import { useNotification } from '../components/NotificationProvider';
 import { signInWithGoogle } from '../lib/auth';
 import {
@@ -20,7 +21,10 @@ const emptyForm: OfficialSongInput = { number: '', title: '', artist: '', chords
 
 /** Himnarios oficiales: los crea y edita solo el administrador; cualquier usuario con sesión los puede leer. */
 export default function OfficialHymnalsPage({ onSelectSong }: Props) {
-  const { user, isAdmin, loading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+  // ¿Es administrador? Se consulta aquí mismo en la tabla `profiles` (columna is_admin)
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [roleError, setRoleError] = useState('');
   const { showNotification } = useNotification();
 
   const [hymnals, setHymnals] = useState<OfficialHymnal[]>([]);
@@ -47,6 +51,23 @@ export default function OfficialHymnalsPage({ onSelectSong }: Props) {
     catch (e) { setError(e instanceof Error ? e.message : 'Error al cargar'); }
     finally { setLoading(false); }
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    if (!user) { setIsAdmin(false); setRoleError(''); return; }
+    (async () => {
+      try {
+        const { data, error } = await supabase.from('profiles').select('is_admin').eq('id', user.id).maybeSingle();
+        if (!active) return;
+        if (error) { setIsAdmin(false); setRoleError(error.message); return; }
+        setIsAdmin(data?.is_admin === true);
+        setRoleError(data ? '' : 'No existe una fila en profiles para tu usuario');
+      } catch (e) {
+        if (active) { setIsAdmin(false); setRoleError(e instanceof Error ? e.message : 'No se pudo verificar el rol'); }
+      }
+    })();
+    return () => { active = false; };
+  }, [user]);
 
   useEffect(() => { if (user) void loadHymnals(); }, [user, loadHymnals]);
   useEffect(() => { if (selected) void loadSongs(selected); else setSongs([]); }, [selected, loadSongs]);
@@ -133,6 +154,7 @@ export default function OfficialHymnalsPage({ onSelectSong }: Props) {
         </div>
       )}
       {!isAdmin && <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Solo lectura: estos himnarios los mantiene el administrador.</p>}
+      {roleError && <p className="text-xs text-red-500">No se pudo comprobar si eres administrador: {roleError}</p>}
 
       {error && <p className="text-sm text-red-500">No se pudo cargar: {error}</p>}
       {loading && <p className="text-sm py-6 flex items-center justify-center gap-2" style={{ color: 'var(--text-muted)' }}><Loader2 size={16} className="animate-spin" /> Cargando…</p>}

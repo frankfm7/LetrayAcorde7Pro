@@ -7,7 +7,8 @@ import { useApp } from '../context/AppContext';
 import { UserProfile } from '../types';
 import { loadUserProfile, updateUserProfile, saveUserProfile, imageToBase64, isValidEmail, isValidPhone } from '../utils/profileUtils';
 import { useNotification } from './NotificationProvider';
-import LoginModal from './LoginModal';
+import { useAuth } from '../context/AuthContext';
+import { signInWithGoogle } from '../lib/auth';
 
 interface ProfilePageProps {
   onBack: () => void;
@@ -15,6 +16,8 @@ interface ProfilePageProps {
 
 export default function ProfilePage({ onBack }: ProfilePageProps) {
   const { state } = useApp();
+  const { user, loading: authLoading } = useAuth();
+  const [loginError, setLoginError] = useState('');
   const { showNotification } = useNotification();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -114,135 +117,45 @@ export default function ProfilePage({ onBack }: ProfilePageProps) {
           </button>
           <h1 className="text-xl font-bold">Mi Perfil</h1>
         </div>
-        <button 
-          onClick={() => setShowLoginModal(true)}
-          className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2"
-          style={{ backgroundColor: 'var(--accent)', color: 'white' }}
-        >
-          <User size={14} />
-          Iniciar sesión
-        </button>
       </div>
 
       <div className="rounded-2xl p-6 mb-6 card-shadow-md" style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
-        <div className="flex items-center gap-4 mb-6">
-          <div className="relative">
-            <div className="w-20 h-20 rounded-full overflow-hidden flex items-center justify-center" style={{ backgroundColor: 'var(--accent-light)' }}>
-              {editAvatar ? (
-                <img src={editAvatar} alt="Avatar" className="w-full h-full object-cover" />
-              ) : (
-                <User size={40} style={{ color: 'var(--accent)' }} />
-              )}
-            </div>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="absolute bottom-0 right-0 p-1.5 rounded-full"
-              style={{ backgroundColor: 'var(--accent)', color: 'white' }}
-            >
-              <Camera size={14} />
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleImageChange}
-              className="hidden"
-            />
-          </div>
-          <div className="flex-1">
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="text-xs font-semibold"
-              style={{ color: 'var(--accent)' }}
-            >
-              Cambiar foto
-            </button>
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <div>
-            <label className="text-xs font-bold mb-2 block uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-              Nombre *
-            </label>
-            <input
-              type="text"
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              maxLength={50}
-              className="w-full p-3 rounded-xl border text-sm"
-              style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
-              placeholder="Tu nombre"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs font-bold mb-2 block uppercase tracking-wider flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
-              <Mail size={14} />
-              Correo electrónico
-            </label>
-            <input
-              type="email"
-              value={editEmail}
-              onChange={(e) => setEditEmail(e.target.value)}
-              className="w-full p-3 rounded-xl border text-sm"
-              style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
-              placeholder="tu@email.com"
-            />
-            <div className="flex items-center gap-1 mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-              <Lock size={10} />
-              <span>Se usará para sincronización futura</span>
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-bold mb-2 block uppercase tracking-wider flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
-              <Phone size={14} />
-              Número de teléfono (opcional)
-            </label>
-            <input
-              type="tel"
-              value={editPhone}
-              onChange={(e) => setEditPhone(e.target.value)}
-              className="w-full p-3 rounded-xl border text-sm"
-              style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
-              placeholder="+1 234 567 8900"
-            />
-            <div className="flex items-center gap-1 mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-              <Lock size={10} />
-              <span>Se usará para sincronización futura</span>
-            </div>
-          </div>
-
-          {profile?.createdAt && (
-            <div className="flex items-center gap-3 p-3 rounded-xl" style={{ backgroundColor: 'var(--bg-secondary)' }}>
-              <Calendar size={18} style={{ color: 'var(--text-muted)' }} />
-              <div className="flex-1">
-                <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Miembro desde</div>
-                <div className="text-sm font-medium">
-                  {new Date(profile.createdAt).toLocaleDateString('es-ES', { year: 'numeric', month: 'long' })}
+        {authLoading ? (
+          <p className="text-sm text-center py-6" style={{ color: 'var(--text-muted)' }}>Cargando tu perfil…</p>
+        ) : user ? (
+          (() => {
+            const meta = (user.user_metadata || {}) as Record<string, string | undefined>;
+            const name = meta.full_name || meta.name || 'Usuario';
+            const photo = meta.avatar_url || meta.picture;
+            return (
+              <div className="flex items-center gap-4">
+                <div className="w-20 h-20 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'var(--accent-light)' }}>
+                  {photo ? <img src={photo} alt="Foto de perfil" referrerPolicy="no-referrer" className="w-full h-full object-cover" /> : <User size={40} style={{ color: 'var(--accent)' }} />}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xl font-bold truncate">{name}</div>
+                  <div className="flex items-center gap-1.5 text-sm truncate" style={{ color: 'var(--text-muted)' }}><Mail size={14} /> {user.email}</div>
+                  {user.created_at && (
+                    <div className="flex items-center gap-1.5 text-xs mt-1" style={{ color: 'var(--text-muted)' }}><Calendar size={12} /> Miembro desde {new Date(user.created_at).toLocaleDateString('es-ES', { year: 'numeric', month: 'long' })}</div>
+                  )}
+                  <div className="text-[11px] mt-2 font-semibold" style={{ color: 'var(--accent)' }}>Sesión iniciada con Google</div>
                 </div>
               </div>
-            </div>
-          )}
-        </div>
-
-        <div className="flex gap-3 mt-6">
-          <button
-            onClick={handleCancel}
-            className="flex-1 py-3 rounded-xl text-sm font-bold"
-            style={{ backgroundColor: 'var(--bg-tertiary)' }}
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={handleSave}
-            className="flex-1 py-3 rounded-xl text-sm font-bold"
-            style={{ backgroundColor: 'var(--accent)', color: 'white' }}
-          >
-            Guardar cambios
-          </button>
-        </div>
+            );
+          })()
+        ) : (
+          <div className="text-center py-6">
+            <User size={40} className="mx-auto mb-3" style={{ color: 'var(--accent)' }} />
+            <p className="font-bold mb-3">Inicia sesión para ver tu perfil</p>
+            <button
+              onClick={async () => { setLoginError(''); const err = await signInWithGoogle(); if (err) setLoginError(err); }}
+              className="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-purple-600 hover:bg-purple-700"
+            >
+              Iniciar sesión con Google
+            </button>
+            {loginError && <p className="text-xs text-red-500 mt-2">{loginError}</p>}
+          </div>
+        )}
       </div>
 
       <div className="rounded-2xl p-6 mb-6 card-shadow-md" style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
@@ -286,7 +199,6 @@ export default function ProfilePage({ onBack }: ProfilePageProps) {
         </div>
       </div>
 
-      {showLoginModal && <LoginModal onClose={() => setShowLoginModal(false)} />}
     </div>
   );
 }

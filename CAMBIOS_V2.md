@@ -249,3 +249,25 @@ utils/songFormats.ts, utils/songText.ts, utils/backgroundStore.ts, components/Ba
 # Versión 2.17
 
 - **Login con Google (Supabase)**: `src/lib/supabase.ts`, `src/context/AuthContext.tsx` (AuthProvider + useAuth), `src/components/LoginButton.tsx`; el botón del encabezado ahora es "Iniciar sesión" (o foto + nombre, con menú: perfil y cerrar sesión). Todo lo local (localStorage) sigue igual. Dependencia nueva: `@supabase/supabase-js`.
+
+---
+
+# Versión 2.18
+
+- **Perfil** con los datos reales de Google (nombre, correo, foto); sin sesión: "Inicia sesión para ver tu perfil" + botón.
+- **Botón de login**: siempre dice "Iniciar sesión".
+- **Buscar en la Nube** (tabla `community_songs`): pestaña en Buscar; abre o guarda la canción en tu cancionero.
+- **Compartir con la comunidad**: opción en el ⋮ de la letra; inserta title, artist, lyrics, chords y created_by (= user.id).
+- Archivos nuevos: `src/lib/auth.ts`, `src/lib/communitySongs.ts`.
+
+Tabla esperada en Supabase (ajústala si la tuya difiere):
+```sql
+create table community_songs (
+  id bigint generated always as identity primary key,
+  title text not null, artist text, lyrics text, chords text,
+  created_by uuid references auth.users(id), created_at timestamptz default now()
+);
+alter table community_songs enable row level security;
+create policy "leer" on community_songs for select to authenticated using (true);
+create policy "subir" on community_songs for insert to authenticated with check (auth.uid() = created_by);
+```

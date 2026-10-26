@@ -5,7 +5,7 @@ import { Song, Hymnal, Order, OrderItem } from './types';
 import { songs as allSongs, hymnals, generateSongCode, getNextSongNumber } from './data/songs';
 import { transposeLyrics, changeKey, transposeKey, parseKey, prefersFlats, semitonesBetween, KEY_OPTIONS_MAJOR, KEY_OPTIONS_MINOR } from './utils/chords';
 import { generateSongShareText } from './utils/shareUtils';
-import { Maximize2, Minimize2, Moon, Sun, Menu, X, Home, Search, Star, ListMusic, Music, Settings, Download, Upload, Plus, Heart, ChevronLeft, ChevronRight, ChevronDown, Copy, Share2, Edit3, Trash2, RotateCcw, Play, Pause, ChevronUp, MoreVertical, Filter, CheckSquare, Square, ArrowRight, Image, Camera, Save, User } from 'lucide-react';
+import { Cloud, Maximize2, Minimize2, Moon, Sun, Menu, X, Home, Search, Star, ListMusic, Music, Settings, Download, Upload, Plus, Heart, ChevronLeft, ChevronRight, ChevronDown, Copy, Share2, Edit3, Trash2, RotateCcw, Play, Pause, ChevronUp, MoreVertical, Filter, CheckSquare, Square, ArrowRight, Image, Camera, Save, User } from 'lucide-react';
 import SplashScreen from './components/SplashScreen';
 import Metronome from './components/Metronome';
 import Tuner from './components/Tuner';
@@ -31,7 +31,8 @@ import WebSearchPage from './components/WebSearchPage';
 import PresentationOrderModal from './components/PresentationOrderModal';
 import ChordDiagram from './components/ChordDiagram';
 import LoginButton from './components/LoginButton';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { shareSongToCommunity } from './lib/communitySongs';
 import { supabase } from './lib/supabase';
 import PageBack, { BackContext } from './components/PageBack';
 import BackgroundLayer from './components/BackgroundLayer';
@@ -546,7 +547,7 @@ function Layout({ children, currentPage, onNavigate, onImport, onExport, onTools
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => onNavigate('search')} className="p-1.5 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}><Search size={16} /></button>
+            <button onClick={() => onNavigate('search')} className="p-1.5 rounded-lg hidden min-[400px]:block" style={{ backgroundColor: 'var(--bg-tertiary)' }}><Search size={16} /></button>
             <button onClick={() => setTheme(state.preferences.theme === 'dark' ? 'light' : 'dark')} className="p-1.5 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}>{state.preferences.theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
             <LoginButton onOpenProfile={() => onNavigate('profile')} />
           </div>
@@ -939,6 +940,23 @@ function SongView({ song: initialSong, initialTransposition, onBack, onEdit, onA
 
   const [chordInfo, setChordInfo] = useState<string | null>(null);
 
+  // Subir la canción a la tabla community_songs de Supabase
+  const { user: authUser } = useAuth();
+  const [sharing, setSharing] = useState(false);
+  const shareWithCommunity = async () => {
+    if (sharing) return;
+    if (!authUser) { showNotification('Inicia sesión para compartir con la comunidad', 'info'); return; }
+    setSharing(true);
+    try {
+      await shareSongToCommunity(song, authUser.id, song.lyricsByLanguage?.[song.language.split('/')[0]] || song.lyrics);
+      showNotification('¡Canción subida a la comunidad!', 'success');
+    } catch (e) {
+      showNotification(`No se pudo subir la canción: ${e instanceof Error ? e.message : 'error desconocido'}`, 'error');
+    } finally {
+      setSharing(false);
+    }
+  };
+
   // Botón atrás del celular: primero cierra la ventana que esté abierta en esta pantalla
   const openLayersRef = useRef<() => boolean>(() => false);
   openLayersRef.current = () => {
@@ -1114,11 +1132,12 @@ function SongView({ song: initialSong, initialTransposition, onBack, onEdit, onA
           <div className="relative" data-menu>
             <button onClick={(e) => { e.stopPropagation(); setShowActionsMenu(!showActionsMenu); }} className="p-1.5 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}><MoreVertical size={16} /></button>
             {showActionsMenu && (
-              <div className="absolute right-0 top-full mt-2 w-44 rounded-xl shadow-lg overflow-hidden z-50" style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
+              <div className="absolute right-0 top-full mt-2 w-60 rounded-xl shadow-lg overflow-hidden z-50" style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
                 <button onClick={() => { onEdit(); setShowActionsMenu(false); }} className="w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 hover:opacity-80" style={{ color: 'var(--text-primary)' }}><Edit3 size={14} /> Editar letra</button>
                 <button onClick={() => { copyLyrics(); setShowActionsMenu(false); }} className="w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 hover:opacity-80" style={{ color: 'var(--text-primary)' }}><Copy size={14} /> Copiar Letra</button>
                 <button onClick={() => { shareSong(); setShowActionsMenu(false); }} className="w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 hover:opacity-80" style={{ color: 'var(--text-primary)' }}><Share2 size={14} /> Compartir</button>
                 {onAddToList && <button onClick={() => { onAddToList(song); setShowActionsMenu(false); }} className="w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 hover:opacity-80" style={{ color: 'var(--text-primary)' }}><ListMusic size={14} /> Agregar a lista</button>}
+                <button onClick={() => { shareWithCommunity(); setShowActionsMenu(false); }} className="w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 hover:opacity-80" style={{ color: 'var(--text-primary)' }}><Cloud size={14} /> Compartir con la comunidad</button>
                 <button onClick={() => { setShowExportModal(true); setShowActionsMenu(false); }} className="w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 hover:opacity-80" style={{ color: 'var(--text-primary)' }}><Upload size={14} /> Exportar</button>
               </div>
             )}

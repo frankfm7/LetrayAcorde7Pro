@@ -43,12 +43,11 @@ export default function LoginButton({ onOpenProfile }: Props) {
         <button
           onClick={signIn}
           disabled={busy}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 active:scale-95 transition disabled:opacity-60"
+          className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-[11px] sm:text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 active:scale-95 transition disabled:opacity-60"
           title="Iniciar sesión con Google"
         >
           {busy ? <Loader2 size={14} className="animate-spin" /> : <LogIn size={14} />}
-          <span className="hidden min-[420px]:inline">Iniciar sesión</span>
-          <span className="min-[420px]:hidden">Entrar</span>
+          <span className="whitespace-nowrap">Iniciar sesión</span>
         </button>
         {error && <div className="absolute right-0 top-full mt-1 w-56 rounded-lg p-2 text-[11px] bg-red-600 text-white z-50">{error}</div>}
       </div>

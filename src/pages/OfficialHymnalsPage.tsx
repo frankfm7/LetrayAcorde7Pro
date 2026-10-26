@@ -25,6 +25,11 @@ export default function OfficialHymnalsPage({ onSelectSong }: Props) {
   // ¿Es administrador? Se consulta aquí mismo en la tabla `profiles` (columna is_admin)
   const [isAdmin, setIsAdmin] = useState(false);
   const [roleError, setRoleError] = useState('');
+  const [checkingAdmin, setCheckingAdmin] = useState(false);
+  const [adminSlow, setAdminSlow] = useState(false);
+  const [adminTry, setAdminTry] = useState(0);
+
+  console.log('User ID:', user?.id); // temporal, para depurar
   const { showNotification } = useNotification();
 
   const [hymnals, setHymnals] = useState<OfficialHymnal[]>([]);
@@ -54,20 +59,37 @@ export default function OfficialHymnalsPage({ onSelectSong }: Props) {
 
   useEffect(() => {
     let active = true;
-    if (!user) { setIsAdmin(false); setRoleError(''); return; }
-    (async () => {
+    const checkAdmin = async () => {
+      if (!user?.id) { setIsAdmin(false); setRoleError(''); return; }
+      setCheckingAdmin(true);
+      setAdminSlow(false);
+      setRoleError('');
       try {
         const { data, error } = await supabase.from('profiles').select('is_admin').eq('id', user.id).maybeSingle();
         if (!active) return;
-        if (error) { setIsAdmin(false); setRoleError(error.message); return; }
-        setIsAdmin(data?.is_admin === true);
-        setRoleError(data ? '' : 'No existe una fila en profiles para tu usuario');
-      } catch (e) {
-        if (active) { setIsAdmin(false); setRoleError(e instanceof Error ? e.message : 'No se pudo verificar el rol'); }
+        if (error) {
+          console.error('Error al verificar admin:', error.message);
+          setIsAdmin(false);
+          setRoleError(error.message);
+        } else if (data) {
+          setIsAdmin(data.is_admin === true);
+        } else {
+          console.log('No se encontró perfil para user.id:', user.id);
+          setIsAdmin(false);
+          setRoleError('No se encontró tu perfil (si la fila existe en Supabase, falta la regla RLS que permita leerla)');
+        }
+      } catch (err) {
+        console.error('Error:', err);
+        if (active) setRoleError(err instanceof Error ? err.message : 'No se pudo verificar el rol');
+      } finally {
+        if (active) setCheckingAdmin(false);
       }
-    })();
-    return () => { active = false; };
-  }, [user]);
+    };
+    void checkAdmin();
+    // si en 3 segundos no responde, se ofrece "Reintentar"
+    const slow = window.setTimeout(() => { if (active) setAdminSlow(true); }, 3000);
+    return () => { active = false; window.clearTimeout(slow); };
+  }, [user, adminTry]);
 
   useEffect(() => { if (user) void loadHymnals(); }, [user, loadHymnals]);
   useEffect(() => { if (selected) void loadSongs(selected); else setSongs([]); }, [selected, loadSongs]);
@@ -153,8 +175,19 @@ export default function OfficialHymnalsPage({ onSelectSong }: Props) {
           <button onClick={() => setConfirm({ kind: 'hymnal', item: selected })} className="btn btn-soft btn-sm" style={{ color: '#ef4444' }}><Trash2 size={14} /> Borrar himnario</button>
         </div>
       )}
-      {!isAdmin && <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Solo lectura: estos himnarios los mantiene el administrador.</p>}
-      {roleError && <p className="text-xs text-red-500">No se pudo comprobar si eres administrador: {roleError}</p>}
+      {!isAdmin && !checkingAdmin && !roleError && <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Solo lectura: estos himnarios los mantiene el administrador.</p>}
+      {checkingAdmin && (
+        <p className="text-xs flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
+          <Loader2 size={13} className="animate-spin" /> Verificando…
+          {adminSlow && <button onClick={() => setAdminTry(n => n + 1)} className="btn btn-soft btn-sm">Reintentar</button>}
+        </p>
+      )}
+      {!checkingAdmin && roleError && (
+        <p className="text-xs text-red-500 flex items-center gap-2 flex-wrap">
+          <span>No se pudo comprobar si eres administrador: {roleError}</span>
+          <button onClick={() => setAdminTry(n => n + 1)} className="btn btn-soft btn-sm">Reintentar</button>
+        </p>
+      )}
 
       {error && <p className="text-sm text-red-500">No se pudo cargar: {error}</p>}
       {loading && <p className="text-sm py-6 flex items-center justify-center gap-2" style={{ color: 'var(--text-muted)' }}><Loader2 size={16} className="animate-spin" /> Cargando…</p>}

@@ -236,3 +236,10 @@ utils/songFormats.ts, utils/songText.ts, utils/backgroundStore.ts, components/Ba
 - **Agregar canciones**: "Agregar una canción que no está en mis cancioneros" arriba, justo después de buscar; filtro ⭐ Favoritos; las canciones salen en orden (por cancionero y número 1, 2, 3…). Lo mismo en la lista de cada cancionero.
 - **Presentar a pantalla completa** (Listas y Órdenes, y el botón Play de una letra): sin encabezado ni menú, con la pantalla completa del aparato. Botón ⛶ en la letra para entrar/salir. El botón atrás del celular sale de la pantalla completa primero.
 - **Herramientas → Acordes**: biblioteca de acordes (19 tipos: mayor, menor, 5, 6, m6, 7, maj7, m7, 7sus4, sus4, sus2, add9, 9, m9, maj9, dim, dim7, m7b5, aug) para guitarra, ukulele, charango y piano, con varias posiciones y sonido. El diagrama de la letra también tiene "Escuchar".
+
+---
+
+# Versión 2.16
+
+- **Diapositiva de título** antes de cada canción en la presentación (4 s o al tocar): título, artista, responsable, ministerio, tono/compás/BPM y numeración propia. Las canciones de una lista/orden arrancan solas (título → secciones → siguiente elemento); los textos se muestran directo y avanzan al tocar la pantalla. Campo nuevo "Ministerio" en el editor de elementos de la orden.
+- **Buscador**: al elegir "Todos" o un cancionero, las canciones salen en orden natural (numeración propia o número de orden: 1, 2, 3 … 10, 11). Misma lógica en "Agregar canciones" y en la lista de cada cancionero.

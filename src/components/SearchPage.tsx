@@ -1,4 +1,5 @@
 import PageBack from './PageBack';
+import { sortSongsNatural } from '../utils/hymnalInfo';
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Search, Star, X, ListMusic } from 'lucide-react';
 import { Song } from '../types';
@@ -48,10 +49,10 @@ export default function SearchPage({ onSelectSong, onAddToList, onSearchWeb }: P
 
   const results = useMemo<SearchResult[]>(() => {
     if (!deferred.trim()) {
-      return [...pool].sort((a, b) => a.title.localeCompare(b.title, 'es')).map(song => ({ song, score: 0, fields: [] }));
+      return sortSongsNatural(pool, hymnals).map(song => ({ song, score: 0, fields: [] }));
     }
     return searchSongs(pool, deferred);
-  }, [pool, deferred]);
+  }, [pool, deferred, hymnals]);
 
   // Guarda la búsqueda reciente cuando el usuario deja de escribir un momento
   useEffect(() => {

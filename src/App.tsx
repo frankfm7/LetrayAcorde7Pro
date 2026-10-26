@@ -39,7 +39,7 @@ import {
 } from './utils/presentation';
 import { transposeSongCopy } from './utils/listUtils';
 import { mergeHymnals, mergeSongs } from './utils/hymnalUtils';
-import { getHymnalInfo } from './utils/hymnalInfo';
+import { getHymnalInfo, songSortNumber } from './utils/hymnalInfo';
 import { getDisplayCode } from './utils/search';
 
 export default function App() {
@@ -409,6 +409,9 @@ function AppContent() {
             showNotification={showNotification}
             immersive={immersive}
             onToggleImmersive={() => (immersive ? exitImmersive() : enterImmersive())}
+            autoStart={!!queue}
+            extra={current ? { person: current.person, ministry: current.ministry } : undefined}
+            onFinished={queue ? () => { if (queue.index < queue.items.length - 1) goToQueueIndex(queue.index + 1); else showNotification('Presentación terminada', 'success'); } : undefined}
           />
         ) : current ? (
           <TextSlide
@@ -418,6 +421,7 @@ function AppContent() {
             position={queue ? `${queue.label} · ${queue.index + 1} de ${queue.items.length}` : ''}
             onExit={handleBack}
             immersive={immersive}
+            onNext={queue && queue.index < queue.items.length - 1 ? () => goToQueueIndex(queue.index + 1) : undefined}
           />
         ) : null}
         {queue && (
@@ -614,7 +618,7 @@ function HomePage({ onSelectSong, onSelectHymnal, onSearch, onAddHymnal }: any) 
   );
 }
 
-function SongView({ song: initialSong, initialTransposition, onBack, onEdit, onAddToList, showNotification, immersive, onToggleImmersive }: any) {
+function SongView({ song: initialSong, initialTransposition, onBack, onEdit, onAddToList, showNotification, immersive, onToggleImmersive, autoStart, extra, onFinished }: any) {
   const { state, toggleFavorite, isFavorite, setFontSize, setShowChords, setCapo, updateCustomSong } = useApp();
   const [transposition, setTransposition] = useState<number>(initialTransposition || 0);
   // Tonalidad elegida de otro modo (mayor ↔ menor): los acordes se convierten, no solo se trasladan
@@ -787,14 +791,32 @@ function SongView({ song: initialSong, initialTransposition, onBack, onEdit, onA
     setCurrentSectionIndex(i => Math.min(i, Math.max(0, presentationOrder.length - 1)));
   }, [presentationOrder.length]);
 
+  // Al llegar desde una lista u orden, la canción arranca sola: título 4 s y luego sus secciones en orden
+  useEffect(() => {
+    if (autoStart && !autoStarted.current && presentationOrder.length > 0) { autoStarted.current = true; startPresentation(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart, presentationOrder.length]);
+
+  // Diapositiva de título de la canción (4 s o hasta tocar la pantalla)
+  const [showTitle, setShowTitle] = useState(false);
+  const endTitle = () => { setShowTitle(false); setPresentTick(t => t + 1); };
+  useEffect(() => {
+    if (!showTitle) return;
+    const t = window.setTimeout(endTitle, 4000);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showTitle]);
+  const autoStarted = useRef(false);
+
   const enteredByPlay = useRef(false);
   const stopPresentation = (finished = false) => {
     if (enteredByPlay.current && immersive) { onToggleImmersive?.(); }
     enteredByPlay.current = false;
     setIsPresenting(false);
     setIsPaused(false);
+    setShowTitle(false);
     setCurrentSectionIndex(0);
-    if (finished) showNotification('Presentación terminada', 'success');
+    if (finished) { if (onFinished) onFinished(); else showNotification('Presentación terminada', 'success'); }
   };
 
   const startPresentation = () => {
@@ -804,6 +826,7 @@ function SongView({ song: initialSong, initialTransposition, onBack, onEdit, onA
     setCurrentSectionIndex(0);
     setIsPaused(false);
     setPresentTick(t => t + 1);
+    setShowTitle(true); // diapositiva de título antes de la primera sección
     setIsPresenting(true);
     if (!immersive && onToggleImmersive) { enteredByPlay.current = true; onToggleImmersive(); }
   };
@@ -814,7 +837,7 @@ function SongView({ song: initialSong, initialTransposition, onBack, onEdit, onA
 
   // Avance automático: cada "intervalSeconds" pasa a la siguiente sección; al llegar al final termina
   useEffect(() => {
-    if (!isPresenting || isPaused || presentationOrder.length === 0) return;
+    if (!isPresenting || isPaused || showTitle || presentationOrder.length === 0) return;
     const timer = window.setInterval(() => {
       const { index, length } = presentRef.current;
       if (index >= length - 1) stopPresentation(true);
@@ -822,7 +845,7 @@ function SongView({ song: initialSong, initialTransposition, onBack, onEdit, onA
     }, intervalSeconds * 1000);
     return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPresenting, isPaused, currentSectionIndex, intervalSeconds, presentationOrder.length, presentTick]);
+  }, [isPresenting, isPaused, showTitle, currentSectionIndex, intervalSeconds, presentationOrder.length, presentTick]);
 
   // La pantalla se desplaza sola para mostrar la sección activa
   useEffect(() => {
@@ -925,6 +948,7 @@ function SongView({ song: initialSong, initialTransposition, onBack, onEdit, onA
     if (editingNote) { setEditingNote(null); return true; }
     if (showConfig) { setShowConfig(false); return true; }
     if (showActionsMenu || showSpeedMenu) { setShowActionsMenu(false); setShowSpeedMenu(false); return true; }
+    if (showTitle) { endTitle(); return true; }
     if (isPresenting) { stopPresentation(false); return true; }
     return false;
   };
@@ -1344,6 +1368,26 @@ function SongView({ song: initialSong, initialTransposition, onBack, onEdit, onA
         </button>
       </div>
 
+      {showTitle && (
+        <div
+          onClick={endTitle}
+          className="fixed inset-0 z-[75] flex flex-col items-center justify-center text-center text-white px-6 cursor-pointer"
+          style={{ background: 'linear-gradient(135deg, #2e1065 0%, #4c1d95 55%, #581c87 100%)' }}
+          translate="no"
+        >
+          <div className="text-xs font-bold tracking-[0.3em] uppercase mb-6" style={{ color: '#fde68a' }}>{hymnalLabel(hymnalInfo.detail, hymnalInfo.number)}</div>
+          <h1 className="font-black leading-tight mb-4" style={{ fontSize: 'clamp(2rem, 9vw, 4.5rem)', textShadow: '0 2px 12px rgba(0,0,0,.4)' }}>{song.title}</h1>
+          {song.artist && song.artist !== 'Desconocido' && <p className="text-xl sm:text-2xl font-semibold opacity-90 mb-2">{song.artist}</p>}
+          {extra?.person && <p className="text-lg font-semibold" style={{ color: '#fde68a' }}>Responsable: {extra.person}</p>}
+          {extra?.ministry && <p className="text-lg font-semibold" style={{ color: '#fde68a' }}>Ministerio: {extra.ministry}</p>}
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3 text-sm sm:text-base font-bold">
+            {song.key && <span className="px-4 py-1.5 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,.16)' }}>Tono {song.key}</span>}
+            {song.timeSignature && <span className="px-4 py-1.5 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,.16)' }}>Compás {song.timeSignature}</span>}
+            {song.bpm ? <span className="px-4 py-1.5 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,.16)' }}>{song.bpm} BPM</span> : null}
+          </div>
+          <p className="absolute bottom-6 text-xs opacity-60">Toca para continuar</p>
+        </div>
+      )}
       {chordInfo && <ChordDiagram chord={chordInfo} onClose={() => setChordInfo(null)} />}
       {showExportModal && (
         <ExportModal songs={[exportableSong()]} onClose={() => setShowExportModal(false)} />
@@ -1363,8 +1407,8 @@ function HymnalView({ hymnal, onSelectSong, onBack, onEditHymnal, onAddSong, onD
 
   const hymnalSongs = useMemo(() => {
     return mergeSongs(allSongs, state.customSongs).filter(s => s.hymnalId === hymnal.id)
-      .sort((a, b) => (a.number ?? Infinity) - (b.number ?? Infinity) || a.title.localeCompare(b.title, 'es', { numeric: true }));
-  }, [hymnal.id, state.customSongs]);
+      .sort((a, b) => songSortNumber(a, hymnal) - songSortNumber(b, hymnal) || a.title.localeCompare(b.title, 'es', { numeric: true }));
+  }, [hymnal, state.customSongs]);
 
   const getDisplayCode = (song: any) => {
     const prefix = hymnal.codePrefix || hymnal.id.charAt(0).toUpperCase();

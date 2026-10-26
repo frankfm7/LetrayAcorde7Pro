@@ -85,6 +85,8 @@ export interface OrderItem {
   text?: string;
   /** Responsable (quién habla, dirige, ora...) */
   person?: string;
+  /** Ministerio o grupo que lo presenta (se muestra en la diapositiva de título) */
+  ministry?: string;
   /** Duración estimada en minutos */
   minutes?: number;
   /** Semitonos de transposición para canciones */

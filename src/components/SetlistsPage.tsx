@@ -27,6 +27,7 @@ export interface QueueItem {
   song?: Song;
   transposition: number;
   person?: string;
+  ministry?: string;
   text?: string;
   minutes?: number;
   /** Hora de inicio calculada (HH:MM), si la orden tiene hora */

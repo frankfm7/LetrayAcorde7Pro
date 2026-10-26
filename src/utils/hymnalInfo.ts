@@ -22,3 +22,22 @@ export function withHymnalInfo(song: Song, hymnals: Hymnal[]): Song {
   if (detail === (song.hymnalDetail || '') && number === (song.hymnalNumber || '')) return song;
   return { ...song, hymnalDetail: detail || undefined, hymnalNumber: number || undefined };
 }
+
+/** Número con el que se ordena una canción dentro de su cancionero: la numeración propia ("N° 75") o, si no tiene, su número de orden. */
+export function songSortNumber(song: Song, hymnal?: Hymnal): number {
+  const own = /(\d+)/.exec(song.hymnalNumber || '');
+  if (own) return Number(own[1]);
+  if (song.number !== undefined) return song.number + (hymnal?.autoNumber ? (hymnal.numberStart ?? 1) - 1 : 0);
+  const fromCode = /(\d+)\s*$/.exec(song.code || '');
+  return fromCode ? Number(fromCode[1]) : Infinity;
+}
+
+/** Orden natural: por cancionero y, dentro de cada uno, 1, 2, 3 … 10, 11 (nunca 1, 10, 11, 2). */
+export function sortSongsNatural(songs: Song[], hymnals: Hymnal[]): Song[] {
+  const rank = new Map(hymnals.map((h, i) => [h.id, i] as [string, number]));
+  const byId = new Map(hymnals.map(h => [h.id, h] as [string, Hymnal]));
+  return [...songs].sort((a, b) =>
+    (rank.get(a.hymnalId) ?? 999) - (rank.get(b.hymnalId) ?? 999)
+    || songSortNumber(a, byId.get(a.hymnalId)) - songSortNumber(b, byId.get(b.hymnalId))
+    || a.title.localeCompare(b.title, 'es', { numeric: true }));
+}

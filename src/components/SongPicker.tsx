@@ -3,6 +3,7 @@ import { Search, X, Check } from 'lucide-react';
 import { Song } from '../types';
 import { useSongLibrary } from '../hooks/useSongLibrary';
 import { useApp } from '../context/AppContext';
+import { sortSongsNatural } from '../utils/hymnalInfo';
 import { searchSongs, getLyricSnippet, SearchResult } from '../utils/search';
 import Highlight from './Highlight';
 
@@ -36,11 +37,7 @@ export default function SongPicker({ title, addedIds, multi = true, onConfirm, o
     return hymnalId === 'all' ? songs : songs.filter(s => s.hymnalId === hymnalId);
   }, [songs, hymnalId, state.favorites]);
   // Orden del cancionero: primero por cancionero y luego por número (1, 2, 3…); sin número, por título
-  const hymnalRank = useMemo(() => new Map(hymnals.map((h, i) => [h.id, i] as [string, number])), [hymnals]);
-  const ordered = useMemo(() => [...pool].sort((a, b) =>
-    (hymnalRank.get(a.hymnalId) ?? 99) - (hymnalRank.get(b.hymnalId) ?? 99)
-    || (a.number ?? Infinity) - (b.number ?? Infinity)
-    || a.title.localeCompare(b.title, 'es', { numeric: true })), [pool, hymnalRank]);
+  const ordered = useMemo(() => sortSongsNatural(pool, hymnals), [pool, hymnals]);
 
   const results = useMemo<SearchResult[]>(() => {
     if (!deferred.trim()) {

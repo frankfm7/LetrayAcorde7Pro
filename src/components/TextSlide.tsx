@@ -7,10 +7,12 @@ interface Props {
   position: string;
   onExit: () => void;
   immersive?: boolean;
+  /** Al tocar la pantalla se pasa al siguiente elemento */
+  onNext?: () => void;
 }
 
 /** Pantalla grande para los momentos de una orden que no son canciones (bienvenida, intervenciones, cierre…). */
-export default function TextSlide({ item, next, position, onExit, immersive }: Props) {
+export default function TextSlide({ item, next, position, onExit, immersive, onNext }: Props) {
   return (
     <div className={`${immersive ? 'min-h-[calc(100dvh-1rem)]' : 'min-h-[calc(100dvh-8rem)]'} flex flex-col`}>
       <div className="flex items-center gap-3 mb-4">
@@ -19,6 +21,7 @@ export default function TextSlide({ item, next, position, onExit, immersive }: P
       </div>
 
       <div
+        onClick={onNext}
         className="flex-1 rounded-3xl p-6 sm:p-10 flex flex-col items-center justify-center text-center text-white shadow-2xl"
         style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
       >

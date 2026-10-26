@@ -236,6 +236,7 @@ function ItemEditor({ item, isNew, onChangeSong, onSave, onClose }: ItemEditorPr
   const linked = song && !!item.songId;
   const [title, setTitle] = useState(item.title);
   const [person, setPerson] = useState(item.person || '');
+  const [ministry, setMinistry] = useState(item.ministry || '');
   const [minutes, setMinutes] = useState(item.minutes !== undefined ? String(item.minutes) : '');
   const [text, setText] = useState(item.text || '');
   const [transposition, setTransposition] = useState(item.transposition || 0);
@@ -246,6 +247,7 @@ function ItemEditor({ item, isNew, onChangeSong, onSave, onClose }: ItemEditorPr
     onSave({
       title: linked ? item.title : title.trim(),
       person: person.trim() || undefined,
+      ministry: ministry.trim() || undefined,
       minutes: m,
       text: text.trim() || undefined,
       transposition: linked ? transposition : undefined,
@@ -280,9 +282,11 @@ function ItemEditor({ item, isNew, onChangeSong, onSave, onClose }: ItemEditorPr
           )}
 
           <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-2"><label className={label} style={{ color: 'var(--text-muted)' }}>{song ? 'Dirige / canta' : 'Responsable'}</label><input className="field" placeholder="Nombre" value={person} onChange={e => setPerson(e.target.value)} /></div>
+            <div className="col-span-2"><label className={label} style={{ color: 'var(--text-muted)' }}>Responsable</label><input className="field" placeholder="Nombre" value={person} onChange={e => setPerson(e.target.value)} /></div>
             <div><label className={label} style={{ color: 'var(--text-muted)' }}>Minutos</label><input className="field" inputMode="numeric" placeholder={song ? '4' : '0'} value={minutes} onChange={e => setMinutes(e.target.value.replace(/[^0-9]/g, ''))} /></div>
           </div>
+
+          <div><label className={label} style={{ color: 'var(--text-muted)' }}>Ministerio (opcional)</label><input className="field" placeholder="Ej: Alabanza, Jóvenes, Escuela dominical" value={ministry} onChange={e => setMinistry(e.target.value)} /></div>
 
           {linked && (
             <div>
@@ -395,7 +399,7 @@ function OrderDetail({ order, songsById, onBack, onOpen, onSelectSong, onPlayQue
         return;
       }
       queueIndexById.set(it.id, queue.length);
-      queue.push({ kind: 'song', title: it.title, song, transposition: it.transposition || 0, person: it.person, text: it.text, minutes: it.minutes, time });
+      queue.push({ kind: 'song', title: it.title, song, transposition: it.transposition || 0, person: it.person, ministry: it.ministry, text: it.text, minutes: it.minutes, time });
     } else {
       queueIndexById.set(it.id, queue.length);
       queue.push({ kind: 'text', title: it.title, transposition: 0, person: it.person, text: it.text, minutes: it.minutes, time });

@@ -286,3 +286,13 @@ create policy "subir" on community_songs for insert to authenticated with check 
 - **Cancioneros oficiales**: botón "Importar a la base de datos" (admin) con A) una canción y B) archivo JSON/TXT/CSV con todas las canciones (por tandas de 300, sin límite); edición por lotes (cambiar idioma, mover a otro cancionero, eliminar); "Descargar cancionero completo" para todos (se guarda en Mis Canciones, localStorage).
 - Textos: "himno/himnario" → "canción/cancionero" en la interfaz (los nombres propios no se tocan).
 - Archivos nuevos: `src/hooks/useLongPress.ts`, `src/components/SelectionBar.tsx`, `src/utils/officialImport.ts`.
+
+---
+
+# Versión 2.21
+
+- **Importar (cancioneros oficiales)**: el modal ya no quedaba bloqueado sin cancionero elegido (por defecto elige uno o permite "Crear un cancionero nuevo con este archivo"); icono de importar corregido; el TXT grande se lee sin congelar la pantalla; errores a consola.
+- **⋮ solo con selección** (clic largo): Editar, Copiar letra y acordes, Compartir como texto, Compartir como imagen, Enviar a la base oficial (admin), Agregar a lista/orden, Eliminar, Cambiar tono. Se quitó el ⋮ de cada canción en Listas y Órdenes. `src/hooks/useSongMenu.tsx`, `src/components/SendOfficialModal.tsx`.
+- **Selección**: se cierra solo con 0 seleccionadas o con la X; clic largo agrega; clic corto sobre una marcada la desmarca.
+- **Descargar cancionero oficial** → crea/actualiza un cancionero LOCAL con su nombre (con confirmación y opción de renombrar), sin duplicar.
+- **Compartir** (texto) incluye título, artista, letra completa con acordes y notas; imagen desde el ⋮ y desde la letra.

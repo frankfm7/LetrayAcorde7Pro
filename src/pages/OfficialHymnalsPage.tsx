@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { BookMarked, ChevronLeft, Edit3, Plus, Trash2, X, Loader2, Download, Upload, Languages, FolderInput, Check } from 'lucide-react';
+import { BookMarked, ChevronLeft, Edit3, Plus, Trash2, X, Loader2, Download, Import, Languages, FolderInput, Check } from 'lucide-react';
 import PageBack from '../components/PageBack';
 import ConfirmModal from '../components/ConfirmModal';
 import SelectionBar, { SelectionAction } from '../components/SelectionBar';
@@ -8,6 +8,8 @@ import { useApp } from '../context/AppContext';
 import { supabase } from '../lib/supabase';
 import { useNotification } from '../components/NotificationProvider';
 import { useLongPress } from '../hooks/useLongPress';
+import { useSongMenu } from '../hooks/useSongMenu';
+import type { Hymnal } from '../types';
 import { useSongLibrary } from '../hooks/useSongLibrary';
 import { signInWithGoogle } from '../lib/auth';
 import { readSongsFile } from '../utils/officialImport';
@@ -30,7 +32,8 @@ const LANGUAGES = ['Castellano', 'Aymara', 'Quechua', 'Inglés', 'Portugués'];
 /** Cancioneros oficiales: los crea y edita solo el administrador; cualquier usuario con sesión los puede leer y descargar. */
 export default function OfficialHymnalsPage({ onSelectSong }: Props) {
   const { user, loading: authLoading } = useAuth();
-  const { state, addMultipleCustomSongs } = useApp();
+  const { state, addMultipleCustomSongs, addCustomHymnal } = useApp();
+  const { buildMenu, modals: songMenuModals } = useSongMenu();
   const { hymnals: myHymnals } = useSongLibrary();
   const { showNotification } = useNotification();
   const longPress = useLongPress();
@@ -59,7 +62,10 @@ export default function OfficialHymnalsPage({ onSelectSong }: Props) {
 
   // importación (administrador)
   const [importOpen, setImportOpen] = useState(false);
-  const [importTarget, setImportTarget] = useState<number | ''>('');
+  const [importTarget, setImportTarget] = useState<number | 'new' | ''>('');
+  const [importNewName, setImportNewName] = useState('');
+  const [reading, setReading] = useState<{ done: number; total: number } | null>(null);
+  const [dlModal, setDlModal] = useState<null | { list: OfficialSong[]; hymnal: OfficialHymnal; name: string }>(null);
   const [importPlan, setImportPlan] = useState<{ fileName: string; songs: OfficialSongInput[]; skipped: number } | null>(null);
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const [importError, setImportError] = useState('');
@@ -170,32 +176,64 @@ export default function OfficialHymnalsPage({ onSelectSong }: Props) {
   };
 
   /* ---------- selección ---------- */
-  const togglePick = (id: number) => setPicked(p => (p.includes(id) ? p.filter(x => x !== id) : [...p, id]));
-  const startSelect = (id: number) => { if (!selectMode) { setSelectMode(true); setPicked([id]); } };
+  // La selección solo se cierra al llegar a 0 canciones o con la X
+  const togglePick = (id: number) => {
+    const next = picked.includes(id) ? picked.filter(x => x !== id) : [...picked, id];
+    setPicked(next);
+    if (next.length === 0) setSelectMode(false);
+  };
+  const startSelect = (id: number) => { setSelectMode(true); setPicked(p => (p.includes(id) ? p : [...p, id])); };
 
   /* ---------- descargar al aparato (localStorage) ---------- */
-  const saveToDevice = async (list: OfficialSong[], hymnalName: string) => {
+  const localIdFor = (h: OfficialHymnal) => `official-h-${h.id}`;
+  const initials = (name: string) => (name.split(/\s+/).filter(w => w.length > 2).map(w => w[0]).join('').slice(0, 3) || name.slice(0, 2)).toUpperCase();
+
+  // Pide confirmar (y poder cambiar) el nombre del cancionero local antes de guardar
+  const askSaveToDevice = (list: OfficialSong[], hymnal: OfficialHymnal) => {
     if (list.length === 0) { showNotification('No hay canciones para guardar', 'info'); return; }
-    const target = myHymnals.find(h => h.id === 'mis-canciones') || myHymnals[0];
-    if (!target) { showNotification('No se encontró tu cancionero "Mis Canciones"', 'error'); return; }
+    const existing = myHymnals.find(h => h.id === localIdFor(hymnal));
+    setDlModal({ list, hymnal, name: existing?.name || hymnal.name });
+  };
+
+  const confirmSaveToDevice = () => {
+    if (!dlModal) return;
+    const { list, hymnal } = dlModal;
+    const name = dlModal.name.trim() || hymnal.name;
     try {
+      const localId = localIdFor(hymnal);
+      let local: Hymnal | undefined = myHymnals.find(h => h.id === localId);
+      const isNew = !local;
+      if (!local) {
+        local = { id: localId, name, description: 'Descargado de Cancioneros Oficiales', language: 'Castellano', icon: '📘', color: '#7c3aed', isCustom: true, codePrefix: initials(name) };
+        addCustomHymnal(local);
+      }
+      const mine = state.customSongs.filter(s => s.hymnalId === localId);
       const have = new Set(state.customSongs.map(s => s.id));
+      const usedNumbers = new Set(mine.map(s => s.number).filter((n): n is number => n !== undefined));
+      let nextFree = Math.max(0, ...usedNumbers) + 1;
       const fresh = list.filter(s => !have.has(`official-${s.id}`));
-      let n = getNextSongNumber(target.id, [...defaultSongs, ...state.customSongs]);
       const created: Song[] = fresh.map(s => {
-        const base = officialToSong(s, hymnalName, target.id);
-        const song = { ...base, number: n, code: generateSongCode(target, n), notes: `Descargada del cancionero oficial: ${hymnalName}` };
-        n++;
-        return song;
+        const own = /(\d+)/.exec(s.number || '');
+        let n = own ? Number(own[1]) : 0;
+        if (!n || usedNumbers.has(n)) n = nextFree;
+        usedNumbers.add(n);
+        nextFree = Math.max(nextFree, n + 1);
+        const base = officialToSong(s, hymnal.name, localId);
+        return { ...base, number: n, code: generateSongCode(local as Hymnal, n), notes: `Descargada de Cancioneros Oficiales: ${hymnal.name}` };
       });
       if (created.length > 0) addMultipleCustomSongs(created);
       showNotification(
-        created.length === 0 ? 'Ya tenías todas estas canciones en "Mis Canciones"'
-          : `${created.length} canción${created.length === 1 ? '' : 'es'} guardada${created.length === 1 ? '' : 's'} en "Mis Canciones"${fresh.length < list.length ? ` (${list.length - fresh.length} ya estaban)` : ''}`,
+        created.length === 0
+          ? `"${local.name}" ya estaba al día: no hay canciones nuevas`
+          : isNew ? `Cancionero "${name}" creado con ${created.length} canciones` : `"${local.name}" actualizado: ${created.length} canciones nuevas${fresh.length < list.length ? ` (${list.length - fresh.length} ya estaban)` : ''}`,
         created.length === 0 ? 'info' : 'success',
       );
+      setDlModal(null);
+      setSelectMode(false);
+      setPicked([]);
     } catch (e) {
-      showNotification(`No se pudieron guardar: ${e instanceof Error ? e.message : 'error'}`, 'error');
+      console.error('Error al guardar el cancionero:', e);
+      showNotification(`No se pudo guardar: ${e instanceof Error ? e.message : 'error'}`, 'error');
     }
   };
 
@@ -205,7 +243,7 @@ export default function OfficialHymnalsPage({ onSelectSong }: Props) {
     try {
       // se vuelve a pedir la lista completa para tener todas las canciones al día
       const all = await getOfficialSongs(selected.id);
-      await saveToDevice(all, selected.name);
+      askSaveToDevice(all, selected);
     } catch (e) {
       showNotification(e instanceof Error ? e.message : 'No se pudo descargar el cancionero', 'error');
     } finally {
@@ -214,33 +252,53 @@ export default function OfficialHymnalsPage({ onSelectSong }: Props) {
   };
 
   /* ---------- importación ---------- */
-  const openImport = () => { setImportOpen(true); setImportTarget(selected?.id ?? ''); setImportPlan(null); setImportProgress(null); setImportError(''); };
+  const openImport = () => {
+    setImportOpen(true);
+    // por defecto: el cancionero abierto, el primero de la lista, o crear uno nuevo
+    setImportTarget(selected?.id ?? hymnals[0]?.id ?? 'new');
+    setImportNewName('');
+    setImportPlan(null);
+    setImportProgress(null);
+    setImportError('');
+  };
 
   const onPickFile = async (file: File | undefined) => {
     if (!file) return;
     setImportError('');
     setImportPlan(null);
+    setReading({ done: 0, total: 1 });
     try {
-      const r = await readSongsFile(file);
+      const r = await readSongsFile(file, (done, total) => setReading({ done, total }));
       if (r.songs.length === 0) throw new Error('No se encontró ninguna canción con título en el archivo');
       setImportPlan({ fileName: file.name, songs: r.songs, skipped: r.skipped });
+      // sin cancionero de destino: se propone crear uno con el nombre del archivo
+      if (importTarget === 'new' && !importNewName.trim()) setImportNewName(file.name.replace(/\.[^.]+$/, ''));
     } catch (e) {
+      console.error('Error al leer el archivo:', e);
       setImportError(e instanceof Error ? e.message : 'No se pudo leer el archivo');
+    } finally {
+      setReading(null);
     }
   };
 
   const runImport = async () => {
     if (!importPlan || importTarget === '') return;
+    if (importTarget === 'new' && !importNewName.trim()) { setImportError('Escribe el nombre del nuevo cancionero'); return; }
     setBusy(true);
     setImportError('');
     setImportProgress({ done: 0, total: importPlan.songs.length });
     try {
-      const n = await addOfficialSongsBulk(Number(importTarget), importPlan.songs, (done, total) => setImportProgress({ done, total }));
+      let targetId: number;
+      if (importTarget === 'new') targetId = (await createOfficialHymnal(importNewName)).id;
+      else targetId = importTarget;
+      const n = await addOfficialSongsBulk(targetId, importPlan.songs, (done, total) => setImportProgress({ done, total }));
       showNotification(`${n} canciones importadas`, 'success');
       setImportOpen(false);
       setImportPlan(null);
-      if (selected && selected.id === Number(importTarget)) await loadSongs(selected);
+      await loadHymnals();
+      if (selected && selected.id === targetId) await loadSongs(selected);
     } catch (e) {
+      console.error('Error al importar:', e);
       setImportError(e instanceof Error ? e.message : 'No se pudo importar');
       if (selected) await loadSongs(selected);
     } finally {
@@ -278,13 +336,25 @@ export default function OfficialHymnalsPage({ onSelectSong }: Props) {
 
   const pickedSongs = songs.filter(s => picked.includes(s.id));
   const selectionActions: SelectionAction[] = [
-    { label: 'Guardar en mi aparato', icon: <Download size={14} />, onClick: () => { if (selected) void saveToDevice(pickedSongs, selected.name).then(() => { setSelectMode(false); setPicked([]); }); } },
+    { label: 'Guardar en mi aparato', icon: <Download size={14} />, onClick: () => { if (selected) askSaveToDevice(pickedSongs, selected); } },
     ...(isAdmin ? [
       { label: 'Cambiar idioma', icon: <Languages size={14} />, onClick: () => setBatchModal('language') },
       { label: 'Mover a otro cancionero', icon: <FolderInput size={14} />, onClick: () => { setBatchTarget(''); setBatchModal('move'); } },
       { label: 'Eliminar', icon: <Trash2 size={14} />, danger: true, onClick: () => setConfirm({ kind: 'many' }) },
     ] : []),
   ];
+  // ⋮ de la selección: las mismas opciones que en el resto de la app
+  const asSongs = pickedSongs.map(r => officialToSong(r, selected?.name || '', 'mis-canciones'));
+  const officialMenu = buildMenu(asSongs, {
+    onEdit: () => { const r = pickedSongs[0]; if (r) setSongModal({ id: r.id, form: { number: r.number || '', title: r.title, artist: r.artist || '', chords: r.chords || r.lyrics || '', language: r.language || 'Castellano' } }); },
+    onDelete: () => { void run(async () => { await deleteOfficialSongs(picked); setSelectMode(false); setPicked([]); if (selected) await loadSongs(selected); }, 'Canciones borradas'); },
+    deleteLabel: 'Eliminar (para todos)',
+    deleteTitle: `¿Borrar ${picked.length} canciones?`,
+    deleteMessage: 'Se borrarán de la base oficial para todos los usuarios. No se puede deshacer.',
+    afterAction: () => { setSelectMode(false); setPicked([]); },
+    extra: [{ label: 'Guardar en mi aparato', icon: <Download size={15} />, onClick: () => { if (selected) askSaveToDevice(pickedSongs, selected); } }],
+  }).filter(m => isAdmin || !['Editar canción', 'Eliminar (para todos)', 'Cambiar tono / transponer'].includes(m.label))
+    .filter(m => !['Cambiar tono / transponer', 'Agregar a lista', 'Agregar a orden'].includes(m.label)); // esas dos aplican a canciones de tu aparato: primero guárdalas
 
   return (
     <div className="space-y-4 pb-6">
@@ -295,6 +365,7 @@ export default function OfficialHymnalsPage({ onSelectSong }: Props) {
           onCancel={() => { setSelectMode(false); setPicked([]); }}
           onToggleAll={() => setPicked(picked.length === songs.length ? [] : songs.map(s => s.id))}
           actions={selectionActions}
+          menu={officialMenu}
         />
       )}
 
@@ -312,7 +383,7 @@ export default function OfficialHymnalsPage({ onSelectSong }: Props) {
       </div>
 
       {isAdmin && (
-        <button onClick={openImport} className="btn btn-gold btn-block" style={{ padding: '0.9rem 1rem', fontSize: '1rem' }}><Upload size={18} /> Importar a la base de datos</button>
+        <button onClick={openImport} className="btn btn-gold btn-block" style={{ padding: '0.9rem 1rem', fontSize: '1rem' }}><Import size={18} /> Importar a la base de datos</button>
       )}
 
       {selected && (
@@ -457,14 +528,15 @@ export default function OfficialHymnalsPage({ onSelectSong }: Props) {
             <div className="space-y-3 overflow-y-auto pr-1">
               <div>
                 <label className="text-xs font-bold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-muted)' }}>Cancionero de destino</label>
-                <select className={field} value={importTarget} onChange={e => setImportTarget(e.target.value === '' ? '' : Number(e.target.value))}>
-                  <option value="">— Elige un cancionero —</option>
+                <select className={field} value={importTarget} onChange={e => setImportTarget(e.target.value === 'new' ? 'new' : e.target.value === '' ? '' : Number(e.target.value))}>
                   {hymnals.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+                  <option value="new">➕ Crear un cancionero nuevo con este archivo…</option>
                 </select>
+                {importTarget === 'new' && <input className={`${field} mt-2`} placeholder="Nombre del nuevo cancionero (ej: Himnario Bautista)" value={importNewName} onChange={e => setImportNewName(e.target.value)} />}
               </div>
 
               <button
-                disabled={importTarget === ''}
+                disabled={importTarget === '' || importTarget === 'new'}
                 onClick={() => { const h = hymnals.find(x => x.id === Number(importTarget)); if (h) { setSelected(h); setImportOpen(false); setSongModal({ form: { ...emptyForm } }); } }}
                 className="w-full text-left p-4 rounded-2xl border disabled:opacity-50" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}
               >
@@ -476,15 +548,16 @@ export default function OfficialHymnalsPage({ onSelectSong }: Props) {
                 <div className="font-bold">B · Importar cancionero completo</div>
                 <div className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>Sube un archivo con muchas canciones (título, artista, letra y acordes). Se guardan todas de una vez, sin límite de cantidad.</div>
                 <label className={`btn btn-soft btn-block ${importTarget === '' ? 'opacity-50 pointer-events-none' : ''}`} style={{ cursor: 'pointer' }}>
-                  <Upload size={16} /> {importPlan ? 'Elegir otro archivo' : 'Elegir archivo (.json, .txt o .csv)'}
-                  <input type="file" accept=".json,.txt,.csv,.tsv,text/plain,application/json,text/csv" className="hidden" disabled={busy} onChange={e => { void onPickFile(e.target.files?.[0]); e.target.value = ''; }} />
+                  <Import size={16} /> {importPlan ? 'Elegir otro archivo' : 'Elegir archivo (.json, .txt o .csv)'}
+                  <input type="file" accept=".json,.txt,.csv,.tsv,text/plain,application/json,text/csv" className="hidden" disabled={busy || reading !== null} onChange={e => { void onPickFile(e.target.files?.[0]); e.target.value = ''; }} />
                 </label>
+                {reading && <p className="text-sm mt-3 flex items-center gap-2" style={{ color: 'var(--text-muted)' }}><Loader2 size={15} className="animate-spin" /> Leyendo el archivo… {reading.total > 1 ? `${reading.done}/${reading.total}` : ''}</p>}
                 {importPlan && (
                   <div className="mt-3 text-sm">
                     <div className="font-semibold">📄 {importPlan.fileName}</div>
                     <div style={{ color: 'var(--accent)' }}>Se encontraron <b>{importPlan.songs.length}</b> canciones{importPlan.skipped > 0 ? ` (${importPlan.skipped} filas sin título omitidas)` : ''}.</div>
                     <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Ej.: {importPlan.songs.slice(0, 3).map(s => `${s.number ? s.number + '. ' : ''}${s.title}`).join(' · ')}</div>
-                    <button className="btn btn-primary btn-block mt-3" disabled={busy || importTarget === ''} onClick={runImport}>
+                    <button className="btn btn-primary btn-block mt-3" disabled={busy || importTarget === '' || (importTarget === 'new' && !importNewName.trim())} onClick={runImport}>
                       {busy ? <><Loader2 size={15} className="animate-spin" /> Importando {importProgress ? `${importProgress.done}/${importProgress.total}` : '…'}</> : `Importar ${importPlan.songs.length} canciones`}
                     </button>
                     {importProgress && (
@@ -526,6 +599,32 @@ export default function OfficialHymnalsPage({ onSelectSong }: Props) {
             <div className="flex gap-2 pt-3">
               <button className="btn btn-soft flex-1" onClick={() => setBatchModal(null)}>Cancelar</button>
               <button className="btn btn-primary flex-1" disabled={busy || (batchModal === 'language' ? !batchLanguage.trim() : batchTarget === '')} onClick={applyBatch}>{busy ? 'Aplicando…' : 'Aplicar'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {songMenuModals}
+
+      {dlModal && (
+        <div className="modal-overlay" onClick={() => setDlModal(null)}>
+          <div className="modal-panel" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-bold text-lg">Guardar en mi aparato</h3>
+              <button onClick={() => setDlModal(null)} className="icon-btn icon-btn-sm" aria-label="Cerrar"><X size={16} /></button>
+            </div>
+            {myHymnals.some(h => h.id === localIdFor(dlModal.hymnal)) ? (
+              <p className="text-sm mb-1">Ya tienes el cancionero <b>“{dlModal.name}”</b> en tu aparato. Se agregarán solo las canciones nuevas ({dlModal.list.length} en total en esta descarga), sin duplicar.</p>
+            ) : (
+              <>
+                <p className="text-sm mb-3">¿Quieres guardar estas {dlModal.list.length} canciones como un cancionero en tu aparato? Podrás verlo en tu pantalla de inicio y usarlo sin internet.</p>
+                <label className="text-xs font-semibold mb-1 block">Nombre del cancionero</label>
+                <input className="field" autoFocus value={dlModal.name} onChange={e => setDlModal({ ...dlModal, name: e.target.value })} />
+              </>
+            )}
+            <div className="flex gap-2 pt-3">
+              <button className="btn btn-soft flex-1" onClick={() => setDlModal(null)}>Cancelar</button>
+              <button className="btn btn-primary flex-1" disabled={!dlModal.name.trim()} onClick={confirmSaveToDevice}>Guardar</button>
             </div>
           </div>
         </div>

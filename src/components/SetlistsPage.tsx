@@ -20,6 +20,8 @@ import ConfirmModal from './ConfirmModal';
 import LyricPreview from './LyricPreview';
 import { useListView } from '../hooks/useListView';
 import { useLongPress } from '../hooks/useLongPress';
+import { useSongMenu } from '../hooks/useSongMenu';
+import SelectionBar from './SelectionBar';
 
 /** Elemento de una presentación: una canción o un momento de texto (solo en órdenes). */
 export interface QueueItem {
@@ -42,11 +44,12 @@ interface Props {
   selectedId: string | null;
   onSelectId: (id: string | null) => void;
   onSelectSong: (song: Song) => void;
+  onEditSong?: (song: Song) => void;
   onPlayQueue: (items: QueueItem[], startIndex: number, label: string) => void;
   showNotification: Notify;
 }
 
-export default function SetlistsPage({ selectedId, onSelectId, onSelectSong, onPlayQueue, showNotification }: Props) {
+export default function SetlistsPage({ selectedId, onSelectId, onSelectSong, onEditSong, onPlayQueue, showNotification }: Props) {
   const { state, addSetlist, removeSetlist, duplicateSetlist, addMultipleCustomSongs } = useApp();
   const { songs, songsById, hymnals } = useSongLibrary();
   const [showCreate, setShowCreate] = useState(false);
@@ -91,6 +94,7 @@ export default function SetlistsPage({ selectedId, onSelectId, onSelectSong, onP
         onBack={() => onSelectId(null)}
         onOpen={onSelectId}
         onSelectSong={onSelectSong}
+        onEditSong={onEditSong}
         onPlayQueue={onPlayQueue}
         showNotification={showNotification}
       />
@@ -177,13 +181,15 @@ interface DetailProps {
   onBack: () => void;
   onOpen: (id: string) => void;
   onSelectSong: (song: Song) => void;
+  onEditSong?: (song: Song) => void;
   onPlayQueue: (items: QueueItem[], startIndex: number, label: string) => void;
   showNotification: Notify;
 }
 
 type Confirm = null | { kind: 'delete' } | { kind: 'clear' } | { kind: 'remove'; ids: string[] };
 
-function SetlistDetail({ setlist, songsById, onBack, onOpen, onSelectSong, onPlayQueue, showNotification }: DetailProps) {
+function SetlistDetail({ setlist, songsById, onBack, onOpen, onSelectSong, onEditSong, onPlayQueue, showNotification }: DetailProps) {
+  const { buildMenu, modals: songMenuModals } = useSongMenu();
   const { updateSetlist, removeSetlist, duplicateSetlist } = useApp();
   const { hymnals } = useSongLibrary();
   const view = useListView();
@@ -319,6 +325,35 @@ function SetlistDetail({ setlist, songsById, onBack, onOpen, onSelectSong, onPla
 
   return (
     <div className="space-y-4 pb-28">
+      {view.selectMode && (() => {
+        const selSongs = selectedIds.map(id => songsById.get(id)).filter((x): x is Song => !!x);
+        const single = selectedIds.length === 1 ? selectedIds[0] : null;
+        const menu = buildMenu(selSongs, {
+          onEdit: sg => { view.exitSelect(); onEditSong?.(sg); },
+          deleteLabel: 'Quitar de la lista',
+          deleteTitle: `¿Quitar ${selectedIds.length} canción${selectedIds.length === 1 ? '' : 'es'} de la lista?`,
+          deleteMessage: 'Se quitarán de la lista; siguen en tu cancionero.',
+          onDelete: () => removeSongs(selectedIds),
+          onTranspose: (sgs, n) => { const ids = new Set(sgs.map(x => x.id)); save({ songs: setlist.songs.map(s => (ids.has(s.songId) ? { ...s, transposition: (s.transposition || 0) + n } : s)) }); },
+          afterAction: view.exitSelect,
+          extra: [
+            { label: 'Presentar desde aquí', icon: <Play size={15} />, disabled: !single, onClick: () => { if (single) { view.exitSelect(); playFromSong(single); } } },
+            { label: 'Agregar nota', icon: <Edit3 size={15} />, disabled: !single, onClick: () => { if (single) { view.exitSelect(); setNoteOpen(single); } } },
+            { label: 'Mover al inicio', disabled: !single, onClick: () => { if (single) { move(single, 'start'); view.exitSelect(); } } },
+            { label: 'Mover al final', disabled: !single, onClick: () => { if (single) { move(single, 'end'); view.exitSelect(); } } },
+          ],
+        });
+        return (
+          <SelectionBar
+            count={selectedIds.length}
+            total={allIds.length}
+            onCancel={view.exitSelect}
+            onToggleAll={() => (selectedIds.length === allIds.length ? view.selectAll([]) : view.selectAll(allIds))}
+            menu={menu}
+            actions={[{ label: 'Quitar', icon: <Trash2 size={14} />, danger: true, onClick: () => setConfirm({ kind: 'remove', ids: selectedIds }) }]}
+          />
+        );
+      })()}
       <div className="flex items-center gap-3">
         <button onClick={onBack} className="icon-btn" aria-label="Volver a mis listas"><ChevronLeft size={20} /></button>
         <div className="flex-1 min-w-0">
@@ -392,7 +427,6 @@ function SetlistDetail({ setlist, songsById, onBack, onOpen, onSelectSong, onPla
                         <ChevronDown size={18} style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />
                       </button>
                     )}
-                    {!view.selectMode && <KebabMenu items={rowMenu} label="Opciones de la canción" small />}
                   </div>
 
                   {noteOpen === item.songId && (
@@ -415,18 +449,7 @@ function SetlistDetail({ setlist, songsById, onBack, onOpen, onSelectSong, onPla
         <textarea className="field" rows={2} placeholder="Ej: Ensayo el sábado a las 5 pm. Traer capo." defaultValue={setlist.notes} onBlur={e => { if (e.target.value !== setlist.notes) save({ notes: e.target.value }); }} />
       </div>
 
-      {/* Barra de acciones al seleccionar varias */}
-      {view.selectMode && (
-        <div className="fixed left-0 right-0 z-40 px-3" style={{ bottom: '76px' }}>
-          <div className="max-w-xl mx-auto rounded-2xl p-2.5 flex items-center gap-2 shadow-2xl" style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--accent)' }}>
-            <span className="text-sm font-bold px-2" style={{ color: 'var(--accent)' }}>{selectedIds.length} sel.</span>
-            <button className="btn btn-soft btn-sm" onClick={() => (selectedIds.length === allIds.length ? view.selectAll([]) : view.selectAll(allIds))}>{selectedIds.length === allIds.length ? 'Ninguna' : 'Todas'}</button>
-            <div className="flex-1" />
-            <button className="btn btn-danger btn-sm" disabled={selectedIds.length === 0} onClick={() => setConfirm({ kind: 'remove', ids: selectedIds })}><Trash2 size={14} /> Quitar</button>
-            <button className="btn btn-soft btn-sm" onClick={view.exitSelect}>Listo</button>
-          </div>
-        </div>
-      )}
+      {songMenuModals}
 
       {showPicker && <SongPicker title="Agregar canciones" addedIds={addedIds} onConfirm={addSongs} onAddExternal={addFree} onClose={() => setShowPicker(false)} />}
       {showShare && <ActionSheet title="Compartir lista" subtitle={setlist.name} actions={shareActions} onClose={() => setShowShare(false)} />}

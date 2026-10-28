@@ -1,5 +1,5 @@
 import type { OfficialSongInput } from '../lib/officialHymnals';
-import { parseMultipleSongsFromText } from './songParser';
+import { parseSongsAsync } from './songParser';
 
 /* Lee un archivo con muchas canciones (JSON, TXT o CSV) y las convierte al formato de los cancioneros oficiales. */
 
@@ -65,7 +65,7 @@ export interface ImportResult {
 }
 
 /** Lee el archivo y devuelve las canciones encontradas. Lanza un Error con el motivo si no se puede leer. */
-export async function readSongsFile(file: File): Promise<ImportResult> {
+export async function readSongsFile(file: File, onProgress?: (done: number, total: number) => void): Promise<ImportResult> {
   let text: string;
   try { text = await file.text(); }
   catch { throw new Error('No se pudo leer el archivo'); }
@@ -102,7 +102,9 @@ export async function readSongsFile(file: File): Promise<ImportResult> {
     }
 
     // TXT: varias canciones separadas por ===== o con encabezados (Título:, Artista:…), con el mismo lector de la app
-    const parsed = parseMultipleSongsFromText(text, 'oficial', file.name);
+    const report = await parseSongsAsync(text, 'oficial', file.name, onProgress);
+    if (report.songs.length === 0) throw new Error(report.lastError || 'No se encontraron canciones en el archivo');
+    const parsed = report.songs;
     const songs: OfficialSongInput[] = parsed.map(p => ({
       title: p.title || 'Sin título',
       artist: p.artist && p.artist !== 'Desconocido' ? p.artist : '',
@@ -110,7 +112,7 @@ export async function readSongsFile(file: File): Promise<ImportResult> {
       language: (p.language || 'Castellano').split('/')[0],
       chords: p.lyrics || '',
     }));
-    return { songs, skipped: 0 };
+    return { songs, skipped: report.failed };
   } catch (e) {
     throw new Error(e instanceof Error ? e.message : 'El archivo no tiene un formato válido');
   }

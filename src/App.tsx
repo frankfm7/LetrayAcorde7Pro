@@ -5,7 +5,7 @@ import { Song, Hymnal, Order, OrderItem } from './types';
 import { songs as allSongs, hymnals, generateSongCode, getNextSongNumber } from './data/songs';
 import { transposeLyrics, changeKey, transposeKey, parseKey, prefersFlats, semitonesBetween, KEY_OPTIONS_MAJOR, KEY_OPTIONS_MINOR } from './utils/chords';
 import { generateSongShareText } from './utils/shareUtils';
-import { Cloud, Maximize2, Minimize2, Moon, Sun, Menu, X, Home, Search, Star, ListMusic, Music, Settings, Download, Upload, Plus, Heart, ChevronLeft, ChevronRight, ChevronDown, Copy, Share2, Edit3, Trash2, RotateCcw, Play, Pause, ChevronUp, MoreVertical, Filter, CheckSquare, Square, ArrowRight, Image, Camera, Save, User } from 'lucide-react';
+import { Image as ImageIcon, Cloud, Maximize2, Minimize2, Moon, Sun, Menu, X, Home, Search, Star, ListMusic, Music, Settings, Download, Upload, Plus, Heart, ChevronLeft, ChevronRight, ChevronDown, Copy, Share2, Edit3, Trash2, RotateCcw, Play, Pause, ChevronUp, MoreVertical, Filter, CheckSquare, Square, ArrowRight, Image, Camera, Save, User } from 'lucide-react';
 import SplashScreen from './components/SplashScreen';
 import Metronome from './components/Metronome';
 import Tuner from './components/Tuner';
@@ -34,9 +34,11 @@ import LoginButton from './components/LoginButton';
 import SelectionBar from './components/SelectionBar';
 import ConfirmModal from './components/ConfirmModal';
 import { useLongPress } from './hooks/useLongPress';
+import { useSongMenu } from './hooks/useSongMenu';
 import OfficialHymnalsPage from './pages/OfficialHymnalsPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { shareSongToCommunity } from './lib/communitySongs';
+import { shareSongImages } from './utils/exportImage';
 import { supabase } from './lib/supabase';
 import PageBack, { BackContext } from './components/PageBack';
 import BackgroundLayer from './components/BackgroundLayer';
@@ -490,7 +492,7 @@ function AppContent() {
   if (selectedHymnal) {
     return (
       <Layout currentPage={currentPage} onNavigate={handleNavigate} onImport={handleImport} onExport={handleExport} onToolsClick={openTools}>
-        <HymnalView hymnal={selectedHymnal} onSelectSong={handleSelectSong} onBack={handleBack} onEditHymnal={(h: Hymnal) => { setEditingHymnal(h); setShowEditHymnalModal(true); }} onAddSong={(h: Hymnal) => setAddingSongToHymnal(h)} onDeleteHymnal={handleDeleteHymnal} onImportClick={(h: Hymnal) => { setImportHymnalId(h.id); setShowImportModal(true); }} showNotification={showNotification} />
+        <HymnalView hymnal={selectedHymnal} onSelectSong={handleSelectSong} onEditSong={(song: Song) => setEditingSong(song)} onBack={handleBack} onEditHymnal={(h: Hymnal) => { setEditingHymnal(h); setShowEditHymnalModal(true); }} onAddSong={(h: Hymnal) => setAddingSongToHymnal(h)} onDeleteHymnal={handleDeleteHymnal} onImportClick={(h: Hymnal) => { setImportHymnalId(h.id); setShowImportModal(true); }} showNotification={showNotification} />
         {showEditHymnalModal && editingHymnal && (
           <EditHymnalModal hymnal={editingHymnal} onClose={() => { setShowEditHymnalModal(false); setEditingHymnal(null); }} onSave={(h) => { updateCustomHymnal(h); setSelectedHymnal(h); setShowEditHymnalModal(false); setEditingHymnal(null); showNotification('Cancionero actualizado', 'success'); }} />
         )}
@@ -513,8 +515,8 @@ function AppContent() {
       case 'backgrounds': return withBack(<BackgroundsPage />);
       case 'websearch': return withBack(<WebSearchPage key={webQuery} initialQuery={webQuery} onDone={() => setCurrentPage('home')} />);
       case 'favorites': return withBack(<FavoritesPage onSelectSong={handleSelectSong} />);
-      case 'setlists': return withBack(<SetlistsPage selectedId={openSetlistId} onSelectId={setOpenSetlistId} onSelectSong={handleSelectSong} onPlayQueue={handlePlayQueue} showNotification={showNotification} />, !!openSetlistId);
-      case 'orders': return withBack(<OrdersPage selectedId={openOrderId} onSelectId={setOpenOrderId} onSelectSong={handleSelectSong} onPlayQueue={handlePlayQueue} showNotification={showNotification} />, !!openOrderId);
+      case 'setlists': return withBack(<SetlistsPage onEditSong={(sg: Song) => setEditingSong(sg)} selectedId={openSetlistId} onSelectId={setOpenSetlistId} onSelectSong={handleSelectSong} onPlayQueue={handlePlayQueue} showNotification={showNotification} />, !!openSetlistId);
+      case 'orders': return withBack(<OrdersPage onEditSong={(sg: Song) => setEditingSong(sg)} selectedId={openOrderId} onSelectId={setOpenOrderId} onSelectSong={handleSelectSong} onPlayQueue={handlePlayQueue} showNotification={showNotification} />, !!openOrderId);
       case 'tools': return withBack(<ToolsPage />);
       case 'profile': return <ProfilePage onBack={() => handleNavigate('home')} />;
       default: return <HomePage onSelectSong={handleSelectSong} onSelectHymnal={handleSelectHymnal} onSearch={() => handleNavigate('search')} onAddHymnal={() => setShowAddHymnalModal(true)} />;
@@ -1141,6 +1143,7 @@ function SongView({ song: initialSong, initialTransposition, onBack, onEdit, onA
                 <button onClick={() => { onEdit(); setShowActionsMenu(false); }} className="w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 hover:opacity-80" style={{ color: 'var(--text-primary)' }}><Edit3 size={14} /> Editar letra</button>
                 <button onClick={() => { copyLyrics(); setShowActionsMenu(false); }} className="w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 hover:opacity-80" style={{ color: 'var(--text-primary)' }}><Copy size={14} /> Copiar Letra</button>
                 <button onClick={() => { shareSong(); setShowActionsMenu(false); }} className="w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 hover:opacity-80" style={{ color: 'var(--text-primary)' }}><Share2 size={14} /> Compartir</button>
+                <button onClick={async () => { setShowActionsMenu(false); try { const r = await shareSongImages([song], allHymnalsForSong); if (r === 'downloaded') showNotification('Imagen generada', 'success'); } catch (e) { showNotification(`No se pudo crear la imagen: ${e instanceof Error ? e.message : 'error'}`, 'error'); } }} className="w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 hover:opacity-80" style={{ color: 'var(--text-primary)' }}><ImageIcon size={14} /> Compartir como imagen</button>
                 {onAddToList && <button onClick={() => { onAddToList(song); setShowActionsMenu(false); }} className="w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 hover:opacity-80" style={{ color: 'var(--text-primary)' }}><ListMusic size={14} /> Agregar a lista</button>}
                 <button onClick={() => { shareWithCommunity(); setShowActionsMenu(false); }} className="w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 hover:opacity-80" style={{ color: 'var(--text-primary)' }}><Cloud size={14} /> Compartir con la comunidad</button>
                 <button onClick={() => { setShowExportModal(true); setShowActionsMenu(false); }} className="w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 hover:opacity-80" style={{ color: 'var(--text-primary)' }}><Upload size={14} /> Exportar</button>
@@ -1420,7 +1423,7 @@ function SongView({ song: initialSong, initialTransposition, onBack, onEdit, onA
   );
 }
 
-function HymnalView({ hymnal, onSelectSong, onBack, onEditHymnal, onAddSong, onDeleteHymnal, onImportClick, showNotification }: any) {
+function HymnalView({ hymnal, onSelectSong, onEditSong, onBack, onEditHymnal, onAddSong, onDeleteHymnal, onImportClick, showNotification }: any) {
   const { state, toggleFavorite, isFavorite, addMultipleToFavorites, removeMultipleCustomSongs, updateCustomHymnal } = useApp();
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedSongs, setSelectedSongs] = useState<string[]>([]);
@@ -1428,6 +1431,7 @@ function HymnalView({ hymnal, onSelectSong, onBack, onEditHymnal, onAddSong, onD
   const [showAddMany, setShowAddMany] = useState(false);
   const [confirmDeleteMany, setConfirmDeleteMany] = useState(false);
   const longPress = useLongPress();
+  const { buildMenu, modals: songMenuModals } = useSongMenu();
   // botón atrás del celular: sale de la selección antes de salir del cancionero
   useEffect(() => {
     if (!selectionMode) return;
@@ -1480,7 +1484,9 @@ function HymnalView({ hymnal, onSelectSong, onBack, onEditHymnal, onAddSong, onD
 
   const toggleSongSelection = (songId: string) => {
     if (selectedSongs.includes(songId)) {
-      setSelectedSongs(selectedSongs.filter(id => id !== songId));
+      const rest = selectedSongs.filter(id => id !== songId);
+      setSelectedSongs(rest);
+      if (rest.length === 0) setSelectionMode(false); // era la última: se cierra la selección
     } else {
       setSelectedSongs([...selectedSongs, songId]);
     }
@@ -1593,21 +1599,33 @@ function HymnalView({ hymnal, onSelectSong, onBack, onEditHymnal, onAddSong, onD
         
       </div>
       
-      {selectionMode && (
-        <SelectionBar
-          count={selectedSongs.length}
-          total={hymnalSongs.length}
-          onCancel={() => { setSelectionMode(false); setSelectedSongs([]); }}
-          onToggleAll={toggleSelectAll}
-          actions={[
-            { label: 'Eliminar', icon: <Trash2 size={14} />, danger: true, onClick: () => handleSelectionAction('delete') },
-            { label: 'Compartir', icon: <Share2 size={14} />, onClick: () => handleSelectionAction('send') },
-            { label: 'Agregar a lista', icon: <ListMusic size={14} />, onClick: () => setShowAddMany(true) },
-            { label: 'Favorito', icon: <Star size={14} />, onClick: () => handleSelectionAction('favorite') },
-            { label: 'Exportar', icon: <Upload size={14} />, onClick: () => handleSelectionAction('export') },
-          ]}
-        />
-      )}
+      {selectionMode && (() => {
+        const sel = hymnalSongs.filter(sg => selectedSongs.includes(sg.id));
+        const exit = () => { setSelectionMode(false); setSelectedSongs([]); };
+        const menu = buildMenu(sel, {
+          onEdit: (sg) => { exit(); onEditSong?.(sg); },
+          afterAction: exit,
+          extra: [
+            { label: 'Marcar como favoritas', icon: <Star size={15} />, onClick: () => handleSelectionAction('favorite') },
+            { label: 'Exportar (PDF, Word, TXT…)', icon: <Upload size={15} />, onClick: () => handleSelectionAction('export') },
+          ],
+        });
+        const pickItem = (label: string) => menu.find(m => m.label === label);
+        return (
+          <SelectionBar
+            count={selectedSongs.length}
+            total={hymnalSongs.length}
+            onCancel={exit}
+            onToggleAll={toggleSelectAll}
+            menu={menu}
+            actions={[
+              { label: 'Eliminar', icon: <Trash2 size={14} />, danger: true, onClick: () => pickItem('Eliminar')?.onClick() },
+              { label: 'Compartir', icon: <Share2 size={14} />, onClick: () => pickItem('Compartir como texto')?.onClick() },
+              { label: 'Agregar a lista', icon: <ListMusic size={14} />, onClick: () => pickItem('Agregar a lista')?.onClick() },
+            ]}
+          />
+        );
+      })()}
 
       <div className="space-y-2">
         {hymnalSongs.map(song => {
@@ -1615,7 +1633,7 @@ function HymnalView({ hymnal, onSelectSong, onBack, onEditHymnal, onAddSong, onD
           return (
             <div 
               key={song.id} 
-              {...longPress(() => { if (!selectionMode) { setSelectionMode(true); setSelectedSongs([song.id]); } })}
+              {...longPress(() => { setSelectionMode(true); setSelectedSongs(prev => (prev.includes(song.id) ? prev : [...prev, song.id])); })}
               className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${isSelected ? 'card-shadow-md' : 'card-shadow-sm hover:card-shadow-md hover-lift'}`} 
               style={{ 
                 backgroundColor: isSelected ? 'var(--accent-light)' : 'var(--card-bg)', 
@@ -1656,16 +1674,7 @@ function HymnalView({ hymnal, onSelectSong, onBack, onEditHymnal, onAddSong, onD
         {hymnalSongs.length === 0 && <div className="text-center py-12"><Music size={40} style={{ color: 'var(--text-muted)' }} className="mx-auto mb-3" /><p className="text-sm" style={{ color: 'var(--text-muted)' }}>No hay canciones</p></div>}
       </div>
       
-      {showAddMany && <AddToListModal songs={hymnalSongs.filter(s => selectedSongs.includes(s.id))} onClose={() => { setShowAddMany(false); setSelectionMode(false); setSelectedSongs([]); }} showNotification={showNotification} />}
-      {confirmDeleteMany && (
-        <ConfirmModal
-          title={`¿Eliminar ${selectedSongs.length} canción${selectedSongs.length === 1 ? '' : 'es'}?`}
-          message="Se quitarán de este cancionero. Esta acción no se puede deshacer."
-          confirmLabel="Eliminar"
-          onCancel={() => setConfirmDeleteMany(false)}
-          onConfirm={() => { removeMultipleCustomSongs(selectedSongs); showNotification(`${selectedSongs.length} canciones eliminadas`, 'success'); setSelectedSongs([]); setSelectionMode(false); setConfirmDeleteMany(false); }}
-        />
-      )}
+      {songMenuModals}
       {showHymnalExportModal && (
         <ExportModal 
           songs={exportAll ? hymnalSongs : hymnalSongs.filter(s => selectedSongs.includes(s.id))} 

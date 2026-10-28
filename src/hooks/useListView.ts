@@ -20,13 +20,16 @@ export function useListView() {
     setSelected(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.size === 0) setSelectMode(false);   // se deseleccionó la última: se cierra la selección
       return next;
     });
   }, []);
 
+  // La selección solo se cierra al llegar a 0 elementos o con la X
+  // Clic largo: abre la selección (o agrega esa canción si ya está abierta)
   const startSelect = useCallback((firstId?: string) => {
     setSelectMode(true);
-    setSelected(firstId ? new Set([firstId]) : new Set());
+    setSelected(prev => (firstId ? new Set([...prev, firstId]) : prev));
   }, []);
 
   const exitSelect = useCallback(() => {

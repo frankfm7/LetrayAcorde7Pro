@@ -345,3 +345,29 @@ export async function exportAsImages(songs: Song[], opts: { themeId?: string; hy
   }
   return done;
 }
+
+/**
+ * Comparte las canciones como imagen: con una sola canción abre el menú de compartir del aparato (si lo permite)
+ * y, si no, descarga el PNG. Con varias descarga una imagen por canción. Usa el fondo y estilo guardados.
+ */
+export async function shareSongImages(songs: Song[], hymnals: Hymnal[] = []): Promise<'shared' | 'downloaded'> {
+  if (songs.length === 1) {
+    const song = songs[0];
+    const hymnal = hymnals.find(h => h.id === song.hymnalId);
+    const blob = await renderSongImage(song, { themeId: hymnal?.exportTheme || 'hymnal', hymnal, style: savedStyle() });
+    const file = new File([blob], `${safeName(song.title)}.png`, { type: 'image/png' });
+    const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
+    try {
+      if (nav.canShare && nav.canShare({ files: [file] })) {
+        await nav.share({ files: [file], title: song.title });
+        return 'shared';
+      }
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return 'shared'; // el usuario cerró el menú
+    }
+    downloadBlob(blob, file.name);
+    return 'downloaded';
+  }
+  await exportAsImages(songs, { hymnals });
+  return 'downloaded';
+}

@@ -262,3 +262,6 @@ input, select, textarea { font-size: 16px; }
 .lyrics-legible .font-lyrics { font-weight: 800 !important; }
 .lyrics-legible .font-mono { font-family: 'Roboto Mono', ui-monospace, Menlo, Consolas, monospace; font-weight: 700 !important; }
 .lyrics-legible .font-black { font-weight: 900; text-shadow: none; }
+
+/* ⋮ dentro de la barra de selección (fondo morado) */
+.selection-kebab .icon-btn { background: rgba(255,255,255,.18) !important; color: #fff !important; border-radius: 9999px; }

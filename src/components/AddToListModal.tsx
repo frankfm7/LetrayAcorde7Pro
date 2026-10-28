@@ -8,16 +8,18 @@ interface Props {
   song?: Song;
   /** Varias canciones a la vez (selección múltiple) */
   songs?: Song[];
+  /** Pestaña con la que abre */
+  initialTab?: 'list' | 'order';
   onClose: () => void;
   showNotification: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
 
 /** Agrega una canción a una lista (nueva o existente) o a una orden de evento. */
-export default function AddToListModal({ song: single, songs: many, onClose, showNotification }: Props) {
+export default function AddToListModal({ song: single, songs: many, initialTab, onClose, showNotification }: Props) {
   const all: Song[] = many && many.length > 0 ? many : single ? [single] : [];
   const song = all[0];
   const { state, addSetlist, addSongToSetlist, addOrder, updateOrder } = useApp();
-  const [tab, setTab] = useState<'list' | 'order'>('list');
+  const [tab, setTab] = useState<'list' | 'order'>(initialTab || 'list');
   const [newName, setNewName] = useState('');
 
   const addToSetlist = (setlistId: string) => {

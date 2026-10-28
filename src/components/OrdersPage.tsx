@@ -1,5 +1,7 @@
 import PageBack from './PageBack';
 import { useLongPress } from '../hooks/useLongPress';
+import { useSongMenu } from '../hooks/useSongMenu';
+import SelectionBar from './SelectionBar';
 import { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronDown, Plus, Trash2, Copy, Share2, Play, Upload, Edit3, X, Music, ArrowRight, FileText, Download, Check, CheckSquare } from 'lucide-react';
 import { Song, Order, OrderItem } from '../types';
@@ -28,6 +30,7 @@ interface Props {
   selectedId: string | null;
   onSelectId: (id: string | null) => void;
   onSelectSong: (song: Song) => void;
+  onEditSong?: (song: Song) => void;
   onPlayQueue: (items: QueueItem[], startIndex: number, label: string) => void;
   showNotification: Notify;
 }
@@ -49,7 +52,7 @@ const TEXT_TEMPLATES: Array<{ title: string; minutes: number }> = [
 
 const today = () => new Date().toISOString().split('T')[0];
 
-export default function OrdersPage({ selectedId, onSelectId, onSelectSong, onPlayQueue, showNotification }: Props) {
+export default function OrdersPage({ selectedId, onSelectId, onSelectSong, onEditSong, onPlayQueue, showNotification }: Props) {
   const { state, addOrder, removeOrder, duplicateOrder, addMultipleCustomSongs } = useApp();
   const { songs, songsById, hymnals } = useSongLibrary();
   const [showCreate, setShowCreate] = useState(false);
@@ -97,6 +100,7 @@ export default function OrdersPage({ selectedId, onSelectId, onSelectSong, onPla
         onBack={() => onSelectId(null)}
         onOpen={onSelectId}
         onSelectSong={onSelectSong}
+        onEditSong={onEditSong}
         onPlayQueue={onPlayQueue}
         showNotification={showNotification}
       />
@@ -323,13 +327,15 @@ interface DetailProps {
   onBack: () => void;
   onOpen: (id: string) => void;
   onSelectSong: (song: Song) => void;
+  onEditSong?: (song: Song) => void;
   onPlayQueue: (items: QueueItem[], startIndex: number, label: string) => void;
   showNotification: Notify;
 }
 
 type Confirm = null | { kind: 'delete' } | { kind: 'clear' } | { kind: 'remove'; ids: string[] };
 
-function OrderDetail({ order, songsById, onBack, onOpen, onSelectSong, onPlayQueue, showNotification }: DetailProps) {
+function OrderDetail({ order, songsById, onBack, onOpen, onSelectSong, onEditSong, onPlayQueue, showNotification }: DetailProps) {
+  const { buildMenu, modals: songMenuModals } = useSongMenu();
   const { updateOrder, removeOrder, duplicateOrder } = useApp();
   const { hymnals } = useSongLibrary();
   const view = useListView();
@@ -350,6 +356,7 @@ function OrderDetail({ order, songsById, onBack, onOpen, onSelectSong, onPlayQue
   const songItemIds = order.items.filter(i => isSongItem(i) && i.songId && songsById.has(i.songId)).map(i => i.id);
 
   const longPress = useLongPress();
+  const isSongItemAny = (it: OrderItem | null) => !!it && isSongItem(it);
   const patchItem = (id: string, patch: Partial<OrderItem>) => save({ items: order.items.map(i => (i.id === id ? { ...i, ...patch } : i)) });
 
   const removeItems = (ids: string[]) => {
@@ -473,6 +480,38 @@ function OrderDetail({ order, songsById, onBack, onOpen, onSelectSong, onPlayQue
 
   return (
     <div className="space-y-4 pb-28">
+      {view.selectMode && (() => {
+        const selItems = allIds.filter(id => view.selected.has(id)).map(id => order.items.find(i => i.id === id)).filter((x): x is OrderItem => !!x);
+        const selSongs = selItems.map(i => (i.songId ? songsById.get(i.songId) : undefined)).filter((x): x is Song => !!x);
+        const single = selItems.length === 1 ? selItems[0] : null;
+        const menu = buildMenu(selSongs, {
+          onEdit: sg => { view.exitSelect(); onEditSong?.(sg); },
+          deleteLabel: 'Quitar de la orden',
+          deleteTitle: `¿Quitar ${selItems.length} elemento${selItems.length === 1 ? '' : 's'} de la orden?`,
+          deleteMessage: 'Se quitarán de la orden; las canciones siguen en tu cancionero.',
+          onDelete: () => removeItems(selItems.map(i => i.id)),
+          onTranspose: (sgs, n) => { const ids = new Set(sgs.map(x => x.id)); save({ items: order.items.map(i => (i.songId && ids.has(i.songId) && view.selected.has(i.id) ? { ...i, transposition: (i.transposition || 0) + n } : i)) }); },
+          afterAction: view.exitSelect,
+          extra: [
+            { label: 'Editar elemento (responsable, minutos…)', icon: <Edit3 size={15} />, disabled: !single, onClick: () => { if (single) { view.exitSelect(); setEditingId(single.id); } } },
+            { label: 'Presentar desde aquí', icon: <Play size={15} />, disabled: !single || !queueIndexById.has(single.id), onClick: () => { if (single) { view.exitSelect(); playFrom(single); } } },
+            ...(isSongItemAny(single) ? [{ label: 'Cambiar canción', icon: <Music size={15} />, onClick: () => { if (single) { view.exitSelect(); setChangingId(single.id); } } }] : []),
+            { label: 'Duplicar elemento', icon: <Copy size={15} />, disabled: !single, onClick: () => { if (single) { duplicateItem(single.id); view.exitSelect(); } } },
+            { label: 'Mover al inicio', disabled: !single, onClick: () => { if (single) { move(single.id, 'start'); view.exitSelect(); } } },
+            { label: 'Mover al final', disabled: !single, onClick: () => { if (single) { move(single.id, 'end'); view.exitSelect(); } } },
+          ],
+        });
+        return (
+          <SelectionBar
+            count={selItems.length}
+            total={allIds.length}
+            onCancel={view.exitSelect}
+            onToggleAll={() => (selectedIds.length === allIds.length ? view.selectAll([]) : view.selectAll(allIds))}
+            menu={menu}
+            actions={[{ label: 'Quitar', icon: <Trash2 size={14} />, danger: true, onClick: () => setConfirm({ kind: 'remove', ids: selectedIds }) }]}
+          />
+        );
+      })()}
       <div className="flex items-center gap-3">
         <button onClick={onBack} className="icon-btn" aria-label="Volver a mis órdenes"><ChevronLeft size={20} /></button>
         <button onClick={() => setShowMeta(true)} className="flex-1 min-w-0 text-left" title="Editar datos de la orden">
@@ -553,7 +592,6 @@ function OrderDetail({ order, songsById, onBack, onOpen, onSelectSong, onPlayQue
                         <ChevronDown size={18} style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />
                       </button>
                     )}
-                    {!view.selectMode && <KebabMenu items={rowMenu} label="Opciones del elemento" small />}
                   </div>
                   {isOpen && song && !view.selectMode && <LyricPreview song={song} transposition={item.transposition} />}
                 </div>
@@ -567,17 +605,7 @@ function OrderDetail({ order, songsById, onBack, onOpen, onSelectSong, onPlayQue
         <div className="rounded-2xl p-3 text-sm" style={{ backgroundColor: 'var(--accent-light)', color: 'var(--accent)' }}>📝 {order.notes}</div>
       )}
 
-      {view.selectMode && (
-        <div className="fixed left-0 right-0 z-40 px-3" style={{ bottom: '76px' }}>
-          <div className="max-w-xl mx-auto rounded-2xl p-2.5 flex items-center gap-2 shadow-2xl" style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--accent)' }}>
-            <span className="text-sm font-bold px-2" style={{ color: 'var(--accent)' }}>{selectedIds.length} sel.</span>
-            <button className="btn btn-soft btn-sm" onClick={() => (selectedIds.length === allIds.length ? view.selectAll([]) : view.selectAll(allIds))}>{selectedIds.length === allIds.length ? 'Ninguno' : 'Todos'}</button>
-            <div className="flex-1" />
-            <button className="btn btn-danger btn-sm" disabled={selectedIds.length === 0} onClick={() => setConfirm({ kind: 'remove', ids: selectedIds })}><Trash2 size={14} /> Quitar</button>
-            <button className="btn btn-soft btn-sm" onClick={view.exitSelect}>Listo</button>
-          </div>
-        </div>
-      )}
+      {songMenuModals}
 
       {showPicker && <SongPicker title="Agregar canciones" addedIds={new Set<string>()} onConfirm={addSongs} onAddExternal={addExternal} onClose={() => setShowPicker(false)} />}
       {changingId && (

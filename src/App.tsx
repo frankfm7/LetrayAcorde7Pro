@@ -31,6 +31,9 @@ import WebSearchPage from './components/WebSearchPage';
 import PresentationOrderModal from './components/PresentationOrderModal';
 import ChordDiagram from './components/ChordDiagram';
 import LoginButton from './components/LoginButton';
+import SelectionBar from './components/SelectionBar';
+import ConfirmModal from './components/ConfirmModal';
+import { useLongPress } from './hooks/useLongPress';
 import OfficialHymnalsPage from './pages/OfficialHymnalsPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { shareSongToCommunity } from './lib/communitySongs';
@@ -1422,6 +1425,16 @@ function HymnalView({ hymnal, onSelectSong, onBack, onEditHymnal, onAddSong, onD
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedSongs, setSelectedSongs] = useState<string[]>([]);
   const [showSelectionMenu, setShowSelectionMenu] = useState(false);
+  const [showAddMany, setShowAddMany] = useState(false);
+  const [confirmDeleteMany, setConfirmDeleteMany] = useState(false);
+  const longPress = useLongPress();
+  // botón atrás del celular: sale de la selección antes de salir del cancionero
+  useEffect(() => {
+    if (!selectionMode) return;
+    const h = (e: Event) => { e.preventDefault(); setSelectionMode(false); setSelectedSongs([]); };
+    window.addEventListener('c7-back', h);
+    return () => window.removeEventListener('c7-back', h);
+  }, [selectionMode]);
   const [showHymnalMenu, setShowHymnalMenu] = useState(false);
   const [showHymnalExportModal, setShowHymnalExportModal] = useState(false);
   const [exportAll, setExportAll] = useState(false);
@@ -1496,15 +1509,14 @@ function HymnalView({ hymnal, onSelectSong, onBack, onEditHymnal, onAddSong, onD
         navigator.clipboard.writeText(textToCopy);
         showNotification(`${selectedSongs.length} canciones copiadas al portapapeles`, 'success');
         break;
-      case 'send':
-        showNotification('Función de enviar canciones (próximamente)', 'info');
+      case 'send': {
+        const text = selectedSongsData.map(s => `${s.title}${s.artist && s.artist !== 'Desconocido' ? ` — ${s.artist}` : ''}\n${s.lyrics.split('\n').filter((l: string) => !l.trim().startsWith('//')).join('\n')}`).join('\n\n---\n\n');
+        if (navigator.share) navigator.share({ title: `${selectedSongsData.length} canciones`, text }).catch(() => undefined);
+        else { navigator.clipboard.writeText(text); showNotification('Canciones copiadas para compartir', 'success'); }
         break;
+      }
       case 'delete':
-        if (confirm(`¿Eliminar ${selectedSongs.length} canciones seleccionadas? Esta acción no se puede deshacer.`)) {
-          removeMultipleCustomSongs(selectedSongs);
-          showNotification(`${selectedSongs.length} canciones eliminadas`, 'success');
-          setSelectedSongs([]);
-        }
+        setConfirmDeleteMany(true);
         break;
       case 'export':
         setShowHymnalExportModal(true);
@@ -1525,28 +1537,6 @@ function HymnalView({ hymnal, onSelectSong, onBack, onEditHymnal, onAddSong, onD
         )}
         <div className="flex-1"><h2 className="text-lg font-bold">{hymnal.name}</h2><p className="text-xs" style={{ color: 'var(--text-muted)' }}>{hymnalSongs.length} canciones • {hymnal.language}</p></div>
         <button onClick={() => onAddSong(hymnal)} className="p-2.5 rounded-xl card-shadow-md hover:card-shadow-lg transition-all" style={{ backgroundColor: 'var(--accent)', color: 'white' }}><Plus size={18} /></button>
-        
-        {hymnalSongs.length > 0 && (
-          <button 
-            onClick={toggleSelectionMode}
-            className="p-2.5 rounded-xl card-shadow-sm hover:card-shadow-md transition-all" 
-            style={{ backgroundColor: selectionMode ? 'var(--accent)' : 'var(--bg-tertiary)', color: selectionMode ? 'white' : 'var(--text-primary)' }}
-            title={selectionMode ? 'Salir de selección' : 'Modo selección'}
-          >
-            {selectionMode ? <X size={18} /> : <CheckSquare size={18} />}
-          </button>
-        )}
-        
-        {selectionMode && (
-          <button 
-            onClick={toggleSelectAll}
-            className="px-3 py-2 rounded-xl card-shadow-sm hover:card-shadow-md transition-all text-xs font-semibold" 
-            style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
-            title={selectedSongs.length === hymnalSongs.length ? 'Deseleccionar todo' : 'Seleccionar todo'}
-          >
-            {selectedSongs.length === hymnalSongs.length ? 'Deseleccionar' : 'Seleccionar todo'}
-          </button>
-        )}
         
         <div className="relative" data-hymnal-menu>
           <button 
@@ -1601,61 +1591,37 @@ function HymnalView({ hymnal, onSelectSong, onBack, onEditHymnal, onAddSong, onD
           )}
         </div>
         
-        {selectionMode && (
-          <div className="relative" data-selection-menu>
-            <button 
-              onClick={(e) => { e.stopPropagation(); setShowSelectionMenu(!showSelectionMenu); }} 
-              className="px-3 py-2 rounded-xl card-shadow-md hover:card-shadow-lg transition-all flex items-center gap-1.5" 
-              style={{ backgroundColor: 'var(--accent)', color: 'white' }}
-            >
-              <span className="text-xs font-semibold">Más opciones</span>
-              <ChevronDown size={14} />
-            </button>
-            {showSelectionMenu && (
-              <div className="absolute top-full right-0 mt-1 w-48 rounded-xl card-shadow-lg overflow-hidden z-50" style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
-                <button onClick={() => toggleSelectAll()} className="w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 hover:opacity-80" style={{ color: 'var(--text-primary)' }}>
-                  <CheckSquare size={14} /> {selectedSongs.length === hymnalSongs.length ? 'Deseleccionar todo' : 'Seleccionar todo'}
-                </button>
-                <div className="border-t" style={{ borderColor: 'var(--border-color)' }}></div>
-                <button onClick={() => handleSelectionAction('favorite')} className="w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 hover:opacity-80" style={{ color: 'var(--text-primary)' }}>
-                  <Star size={14} /> Marcar favorito
-                </button>
-                <button onClick={() => handleSelectionAction('copy')} className="w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 hover:opacity-80" style={{ color: 'var(--text-primary)' }}>
-                  <Copy size={14} /> Copiar
-                </button>
-                <button onClick={() => handleSelectionAction('send')} className="w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 hover:opacity-80" style={{ color: 'var(--text-primary)' }}>
-                  <Share2 size={14} /> Enviar
-                </button>
-                <button onClick={() => handleSelectionAction('delete')} className="w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 hover:opacity-80 text-red-500">
-                  <Trash2 size={14} /> Eliminar
-                </button>
-                <button onClick={() => handleSelectionAction('export')} className="w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 hover:opacity-80" style={{ color: 'var(--text-primary)' }}>
-                  <Upload size={14} /> Exportar
-                </button>
-              </div>
-            )}
-          </div>
-        )}
       </div>
       
       {selectionMode && (
-        <div className="px-4 py-3 rounded-xl text-sm font-semibold flex items-center justify-between" style={{ backgroundColor: 'var(--accent-light)', color: 'var(--accent)', border: '2px solid var(--accent)' }}>
-          <span>✓ {selectedSongs.length} canción{selectedSongs.length !== 1 ? 'es' : ''} seleccionada{selectedSongs.length !== 1 ? 's' : ''}</span>
-          <span className="text-xs font-normal">Modo selección activo</span>
-        </div>
+        <SelectionBar
+          count={selectedSongs.length}
+          total={hymnalSongs.length}
+          onCancel={() => { setSelectionMode(false); setSelectedSongs([]); }}
+          onToggleAll={toggleSelectAll}
+          actions={[
+            { label: 'Eliminar', icon: <Trash2 size={14} />, danger: true, onClick: () => handleSelectionAction('delete') },
+            { label: 'Compartir', icon: <Share2 size={14} />, onClick: () => handleSelectionAction('send') },
+            { label: 'Agregar a lista', icon: <ListMusic size={14} />, onClick: () => setShowAddMany(true) },
+            { label: 'Favorito', icon: <Star size={14} />, onClick: () => handleSelectionAction('favorite') },
+            { label: 'Exportar', icon: <Upload size={14} />, onClick: () => handleSelectionAction('export') },
+          ]}
+        />
       )}
-      
+
       <div className="space-y-2">
         {hymnalSongs.map(song => {
           const isSelected = selectedSongs.includes(song.id);
           return (
             <div 
               key={song.id} 
+              {...longPress(() => { if (!selectionMode) { setSelectionMode(true); setSelectedSongs([song.id]); } })}
               className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${isSelected ? 'card-shadow-md' : 'card-shadow-sm hover:card-shadow-md hover-lift'}`} 
               style={{ 
                 backgroundColor: isSelected ? 'var(--accent-light)' : 'var(--card-bg)', 
                 borderColor: isSelected ? 'var(--accent)' : 'var(--border-color)',
-                borderWidth: isSelected ? '2px' : '1px'
+                borderWidth: isSelected ? '2px' : '1px',
+                WebkitTouchCallout: 'none', userSelect: 'none',
               }}
             >
               {selectionMode && (
@@ -1690,6 +1656,16 @@ function HymnalView({ hymnal, onSelectSong, onBack, onEditHymnal, onAddSong, onD
         {hymnalSongs.length === 0 && <div className="text-center py-12"><Music size={40} style={{ color: 'var(--text-muted)' }} className="mx-auto mb-3" /><p className="text-sm" style={{ color: 'var(--text-muted)' }}>No hay canciones</p></div>}
       </div>
       
+      {showAddMany && <AddToListModal songs={hymnalSongs.filter(s => selectedSongs.includes(s.id))} onClose={() => { setShowAddMany(false); setSelectionMode(false); setSelectedSongs([]); }} showNotification={showNotification} />}
+      {confirmDeleteMany && (
+        <ConfirmModal
+          title={`¿Eliminar ${selectedSongs.length} canción${selectedSongs.length === 1 ? '' : 'es'}?`}
+          message="Se quitarán de este cancionero. Esta acción no se puede deshacer."
+          confirmLabel="Eliminar"
+          onCancel={() => setConfirmDeleteMany(false)}
+          onConfirm={() => { removeMultipleCustomSongs(selectedSongs); showNotification(`${selectedSongs.length} canciones eliminadas`, 'success'); setSelectedSongs([]); setSelectionMode(false); setConfirmDeleteMany(false); }}
+        />
+      )}
       {showHymnalExportModal && (
         <ExportModal 
           songs={exportAll ? hymnalSongs : hymnalSongs.filter(s => selectedSongs.includes(s.id))} 

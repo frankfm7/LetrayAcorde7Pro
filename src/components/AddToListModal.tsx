@@ -5,13 +5,17 @@ import { useApp } from '../context/AppContext';
 import { newSongItem, uid } from '../utils/listUtils';
 
 interface Props {
-  song: Song;
+  song?: Song;
+  /** Varias canciones a la vez (selección múltiple) */
+  songs?: Song[];
   onClose: () => void;
   showNotification: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
 
 /** Agrega una canción a una lista (nueva o existente) o a una orden de evento. */
-export default function AddToListModal({ song, onClose, showNotification }: Props) {
+export default function AddToListModal({ song: single, songs: many, onClose, showNotification }: Props) {
+  const all: Song[] = many && many.length > 0 ? many : single ? [single] : [];
+  const song = all[0];
   const { state, addSetlist, addSongToSetlist, addOrder, updateOrder } = useApp();
   const [tab, setTab] = useState<'list' | 'order'>('list');
   const [newName, setNewName] = useState('');
@@ -19,26 +23,27 @@ export default function AddToListModal({ song, onClose, showNotification }: Prop
   const addToSetlist = (setlistId: string) => {
     const list = state.setlists.find(s => s.id === setlistId);
     if (!list) return;
-    if (list.songs.some(s => s.songId === song.id)) {
-      showNotification('Esa canción ya está en la lista', 'info');
+    const fresh = all.filter(x => !list.songs.some(s => s.songId === x.id));
+    if (fresh.length === 0) {
+      showNotification(all.length > 1 ? 'Esas canciones ya están en la lista' : 'Esa canción ya está en la lista', 'info');
       return;
     }
-    addSongToSetlist(setlistId, { songId: song.id, transposition: 0, notes: '', order: list.songs.length });
-    showNotification(`Agregada a "${list.name}"`, 'success');
+    fresh.forEach((x, i) => addSongToSetlist(setlistId, { songId: x.id, transposition: 0, notes: '', order: list.songs.length + i }));
+    showNotification(fresh.length > 1 ? `${fresh.length} canciones agregadas a "${list.name}"` : `Agregada a "${list.name}"`, 'success');
   };
 
   const addToOrder = (orderId: string) => {
     const order = state.orders.find(o => o.id === orderId);
     if (!order) return;
-    updateOrder({ ...order, items: [...order.items, newSongItem(song)] });
-    showNotification(`Agregada a "${order.name}"`, 'success');
+    updateOrder({ ...order, items: [...order.items, ...all.map(x => newSongItem(x))] });
+    showNotification(all.length > 1 ? `${all.length} canciones agregadas a "${order.name}"` : `Agregada a "${order.name}"`, 'success');
   };
 
   const createAndAdd = () => {
     const name = newName.trim();
     if (!name) return;
     if (tab === 'list') {
-      addSetlist(name, [{ songId: song.id, transposition: 0, notes: '', order: 0 }]);
+      addSetlist(name, all.map((x, i) => ({ songId: x.id, transposition: 0, notes: '', order: i })));
       showNotification(`Lista "${name}" creada`, 'success');
     } else {
       addOrder({
@@ -46,7 +51,7 @@ export default function AddToListModal({ song, onClose, showNotification }: Prop
         name,
         type: 'Evento',
         date: new Date().toISOString().split('T')[0],
-        items: [newSongItem(song)],
+        items: all.map(x => newSongItem(x)),
       });
       showNotification(`Orden "${name}" creada`, 'success');
     }
@@ -60,7 +65,7 @@ export default function AddToListModal({ song, onClose, showNotification }: Prop
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="min-w-0">
             <h3 className="text-lg font-bold">Agregar a…</h3>
-            <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{song.title}</p>
+            <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{all.length > 1 ? `${all.length} canciones seleccionadas` : song?.title}</p>
           </div>
           <button onClick={onClose} className="icon-btn icon-btn-sm" aria-label="Cerrar"><X size={16} /></button>
         </div>
@@ -87,7 +92,7 @@ export default function AddToListModal({ song, onClose, showNotification }: Prop
           )}
 
           {tab === 'list' && state.setlists.map(list => {
-            const inList = list.songs.some(s => s.songId === song.id);
+            const inList = all.every(x => list.songs.some(s => s.songId === x.id));
             return (
               <button key={list.id} onClick={() => addToSetlist(list.id)} disabled={inList} className="w-full flex items-center gap-3 p-3 rounded-2xl text-left transition-all" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', opacity: inList ? 0.6 : 1 }}>
                 <span className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'var(--accent-light)', color: 'var(--accent)' }}><ListMusic size={18} /></span>

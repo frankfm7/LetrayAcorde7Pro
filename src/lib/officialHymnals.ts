@@ -48,13 +48,13 @@ export function sortOfficialSongs<T extends { number?: string | null; title: str
   });
 }
 
-/** Todos los himnarios oficiales. */
+/** Todos los cancioneros oficiales. */
 export async function getOfficialHymnals(): Promise<OfficialHymnal[]> {
   try {
     const { data, error } = await supabase.from('official_hymnals').select('*').order('name', { ascending: true });
     if (error) throw new Error(error.message);
     return (data || []) as OfficialHymnal[];
-  } catch (e) { return fail(e, 'No se pudieron cargar los himnarios oficiales'); }
+  } catch (e) { return fail(e, 'No se pudieron cargar los cancioneros oficiales'); }
 }
 
 /** Todas las canciones de un himnario, ordenadas por número. */
@@ -73,7 +73,7 @@ export async function createOfficialHymnal(name: string): Promise<OfficialHymnal
     const { data, error } = await supabase.from('official_hymnals').insert({ name: name.trim(), created_by: auth.user?.id }).select().single();
     if (error) throw new Error(error.message);
     return data as OfficialHymnal;
-  } catch (e) { return fail(e, 'No se pudo crear el himnario'); }
+  } catch (e) { return fail(e, 'No se pudo crear el cancionero'); }
 }
 
 /** Cambia el nombre de un himnario oficial (solo administrador). */
@@ -89,7 +89,7 @@ export async function deleteOfficialHymnal(id: number): Promise<void> {
   try {
     const { error } = await supabase.from('official_hymnals').delete().eq('id', id);
     if (error) throw new Error(error.message);
-  } catch (e) { fail(e, 'No se pudo borrar el himnario'); }
+  } catch (e) { fail(e, 'No se pudo borrar el cancionero'); }
 }
 
 const toRow = (d: OfficialSongInput) => ({
@@ -141,7 +141,7 @@ export async function searchOfficialSongs(text: string): Promise<OfficialSong[]>
     const { data, error } = await supabase.from('official_songs').select('*, official_hymnals(name)').or(parts.join(',')).limit(60);
     if (error) throw new Error(error.message);
     return sortOfficialSongs((data || []) as OfficialSong[]);
-  } catch (e) { return fail(e, 'No se pudo buscar en los himnarios oficiales'); }
+  } catch (e) { return fail(e, 'No se pudo buscar en los cancioneros oficiales'); }
 }
 
 /** Convierte una canción oficial en una canción de la app (para leerla o guardarla). */
@@ -160,8 +160,70 @@ export function officialToSong(row: OfficialSong, hymnalName: string, hymnalId =
     categories: [],
     sections: [],
     lyrics: row.chords || row.lyrics || '',
-    notes: `Himnario oficial: ${hymnalName}`,
+    notes: `Cancionero oficial: ${hymnalName}`,
     hymnalDetail: hymnalName,
     hymnalNumber: num ? `N° ${num}` : undefined,
   };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Operaciones masivas (solo administrador)                           */
+/* ------------------------------------------------------------------ */
+
+const chunk = <T,>(items: T[], size: number): T[][] => {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+};
+
+/** Inserta muchas canciones en un cancionero, por tandas (sin límite de cantidad). Devuelve cuántas se guardaron. */
+export async function addOfficialSongsBulk(
+  hymnalId: number,
+  songs: OfficialSongInput[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<number> {
+  const { data: auth } = await supabase.auth.getUser();
+  let done = 0;
+  for (const batch of chunk(songs, 300)) {
+    try {
+      const rows = batch.map(s => ({ ...toRow(s), hymnal_id: hymnalId, created_by: auth.user?.id }));
+      const { error } = await supabase.from('official_songs').insert(rows);
+      if (error) throw new Error(error.message);
+      done += batch.length;
+      onProgress?.(done, songs.length);
+    } catch (e) {
+      throw new Error(`Se guardaron ${done} de ${songs.length}. ${e instanceof Error ? e.message : 'Error al insertar'}`);
+    }
+  }
+  return done;
+}
+
+/** Cambia el idioma de varias canciones a la vez. */
+export async function updateOfficialSongsLanguage(ids: number[], language: string): Promise<void> {
+  try {
+    for (const part of chunk(ids, 200)) {
+      const { error } = await supabase.from('official_songs').update({ language: language.trim() || 'Castellano' }).in('id', part);
+      if (error) throw new Error(error.message);
+    }
+  } catch (e) { fail(e, 'No se pudo cambiar el idioma'); }
+}
+
+/** Mueve varias canciones a otro cancionero. */
+export async function moveOfficialSongs(ids: number[], hymnalId: number): Promise<void> {
+  try {
+    for (const part of chunk(ids, 200)) {
+      const { error } = await supabase.from('official_songs').update({ hymnal_id: hymnalId }).in('id', part);
+      if (error) throw new Error(error.message);
+    }
+  } catch (e) { fail(e, 'No se pudieron mover las canciones'); }
+}
+
+/** Borra varias canciones a la vez. */
+export async function deleteOfficialSongs(ids: number[]): Promise<void> {
+  try {
+    for (const part of chunk(ids, 200)) {
+      const { error } = await supabase.from('official_songs').delete().in('id', part);
+      if (error) throw new Error(error.message);
+    }
+  } catch (e) { fail(e, 'No se pudieron borrar las canciones'); }
 }

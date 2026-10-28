@@ -19,6 +19,7 @@ import KebabMenu, { MenuItem } from './KebabMenu';
 import ConfirmModal from './ConfirmModal';
 import LyricPreview from './LyricPreview';
 import { useListView } from '../hooks/useListView';
+import { useLongPress } from '../hooks/useLongPress';
 
 /** Elemento de una presentación: una canción o un momento de texto (solo en órdenes). */
 export interface QueueItem {
@@ -196,6 +197,7 @@ function SetlistDetail({ setlist, songsById, onBack, onOpen, onSelectSong, onPla
 
   const save = (patch: Partial<Setlist>) => updateSetlist({ ...setlist, ...patch, updatedAt: new Date().toISOString() });
 
+  const longPress = useLongPress();
   const rows = useMemo(() => setlist.songs.map(s => ({ ...s, id: s.songId })), [setlist.songs]);
   const addedIds = useMemo(() => new Set(setlist.songs.map(s => s.songId)), [setlist.songs]);
   const allIds = setlist.songs.map(s => s.songId);
@@ -381,7 +383,7 @@ function SetlistDetail({ setlist, songsById, onBack, onOpen, onSelectSong, onPla
                       </button>
                     ) : view.showHandles ? handle : <span className="w-1 flex-shrink-0" />}
                     <span className="text-xs font-bold w-5 text-center flex-shrink-0" style={{ color: 'var(--accent)' }}>{index + 1}</span>
-                    <button onClick={() => (view.selectMode ? view.toggleSelect(item.songId) : song && onSelectSong(song))} className="flex-1 text-left min-w-0">
+                    <button {...longPress(() => { if (!view.selectMode) view.startSelect(item.songId); })} onClick={() => (view.selectMode ? view.toggleSelect(item.songId) : song && onSelectSong(song))} className="flex-1 text-left min-w-0">
                       <div className="font-semibold text-sm truncate">{song?.title || (item.free ? `📝 ${item.title}` : 'Canción no encontrada')}</div>
                       <div className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{song ? <>{song.artist} · <b style={{ color: 'var(--accent)' }} translate="no">{tone || song.key}</b></> : (item.free ? (item.notes || 'Sin letra en el cancionero') : '')}{song && item.notes ? ` · 📝 ${item.notes}` : ''}</div>
                     </button>

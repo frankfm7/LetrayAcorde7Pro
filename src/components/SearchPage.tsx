@@ -115,8 +115,8 @@ export default function SearchPage({ onSelectSong, onAddToList, onSearchWeb }: P
     const hymnal = hymnals.find(h => h.id === 'mis-canciones') || hymnals[0];
     if (!hymnal) return;
     const number = getNextSongNumber(hymnal.id, [...defaultSongs, ...state.customSongs]);
-    const base = officialToSong(row, row.official_hymnals?.name || 'Himnario oficial', hymnal.id);
-    addCustomSong({ ...base, id: uid(), number, code: generateSongCode(hymnal, number), notes: 'Descargada de un himnario oficial' });
+    const base = officialToSong(row, row.official_hymnals?.name || 'Cancionero oficial', hymnal.id);
+    addCustomSong({ ...base, id: uid(), number, code: generateSongCode(hymnal, number), notes: 'Descargada de un cancionero oficial' });
     showNotification('Canción guardada en tu cancionero', 'success');
   };
 
@@ -180,7 +180,7 @@ export default function SearchPage({ onSelectSong, onAddToList, onSearchWeb }: P
       <div className="flex p-1 rounded-xl gap-1 max-w-full overflow-x-auto" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
         <button onClick={() => { setCloud(false); setOfficial(false); }} className="px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap flex-shrink-0" style={{ backgroundColor: !cloud && !official ? 'var(--card-bg)' : 'transparent', color: !cloud && !official ? 'var(--accent)' : 'var(--text-muted)' }}>Mis canciones</button>
         <button onClick={() => { setCloud(true); setOfficial(false); }} className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 whitespace-nowrap flex-shrink-0" style={{ backgroundColor: cloud ? 'var(--card-bg)' : 'transparent', color: cloud ? 'var(--accent)' : 'var(--text-muted)' }}><Cloud size={13} /> Buscar en la Nube</button>
-        <button onClick={() => { setOfficial(true); setCloud(false); }} className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 whitespace-nowrap flex-shrink-0" style={{ backgroundColor: official ? 'var(--card-bg)' : 'transparent', color: official ? 'var(--accent)' : 'var(--text-muted)' }}><BookMarked size={13} /> Himnarios Oficiales</button>
+        <button onClick={() => { setOfficial(true); setCloud(false); }} className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 whitespace-nowrap flex-shrink-0" style={{ backgroundColor: official ? 'var(--card-bg)' : 'transparent', color: official ? 'var(--accent)' : 'var(--text-muted)' }}><BookMarked size={13} /> Cancioneros Oficiales</button>
       </div>
 
       {cloud && (
@@ -219,23 +219,23 @@ export default function SearchPage({ onSelectSong, onAddToList, onSearchWeb }: P
         <div className="space-y-2">
           {!user ? (
             <div className="rounded-2xl p-4 text-center" style={{ backgroundColor: 'var(--accent-light)', border: '1px solid var(--border-color)' }}>
-              <p className="text-sm font-bold mb-3" style={{ color: 'var(--accent)' }}>Inicia sesión para buscar en los himnarios oficiales</p>
+              <p className="text-sm font-bold mb-3" style={{ color: 'var(--accent)' }}>Inicia sesión para buscar en los cancioneros oficiales</p>
               <button onClick={async () => { const err = await signInWithGoogle(); if (err) showNotification(err, 'error'); }} className="px-4 py-2 rounded-xl text-sm font-bold text-white bg-purple-600 hover:bg-purple-700">Iniciar sesión con Google</button>
             </div>
           ) : !query.trim() ? (
-            <p className="text-sm text-center py-8" style={{ color: 'var(--text-muted)' }}>Escribe el título, el artista o el número del himno.</p>
+            <p className="text-sm text-center py-8" style={{ color: 'var(--text-muted)' }}>Escribe el título, el artista o el número de la canción.</p>
           ) : officialLoading ? (
             <p className="text-sm text-center py-8 flex items-center justify-center gap-2" style={{ color: 'var(--text-muted)' }}><Loader2 size={16} className="animate-spin" /> Buscando…</p>
           ) : officialError ? (
             <p className="text-sm text-center py-6 text-red-500">No se pudo buscar: {officialError}</p>
           ) : officialRows.length === 0 ? (
-            <p className="text-sm text-center py-8" style={{ color: 'var(--text-muted)' }}>No hay himnos oficiales con “{query.trim()}”.</p>
+            <p className="text-sm text-center py-8" style={{ color: 'var(--text-muted)' }}>No hay canciones oficiales con “{query.trim()}”.</p>
           ) : (
             <>
-              <div className="text-sm font-semibold" style={{ color: 'var(--text-muted)' }}>{officialRows.length} en himnarios oficiales</div>
+              <div className="text-sm font-semibold" style={{ color: 'var(--text-muted)' }}>{officialRows.length} en cancioneros oficiales</div>
               {officialRows.map(row => (
                 <div key={row.id} className="flex items-center gap-2 p-3 rounded-2xl border" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)', boxShadow: 'var(--card-shadow)' }}>
-                  <button onClick={() => onSelectSong(officialToSong(row, row.official_hymnals?.name || 'Himnario oficial', hymnals[0]?.id || 'mis-canciones'))} className="flex-1 text-left min-w-0">
+                  <button onClick={() => onSelectSong(officialToSong(row, row.official_hymnals?.name || 'Cancionero oficial', hymnals[0]?.id || 'mis-canciones'))} className="flex-1 text-left min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">{row.number && <span className="badge" translate="no">N° {row.number}</span>}<span className="font-bold text-sm truncate"><Highlight text={row.title} query={query} /></span></div>
                     <div className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{[row.official_hymnals?.name, row.artist].filter(Boolean).join(' • ')}</div>
                   </button>

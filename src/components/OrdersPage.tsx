@@ -1,4 +1,5 @@
 import PageBack from './PageBack';
+import { useLongPress } from '../hooks/useLongPress';
 import { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronDown, Plus, Trash2, Copy, Share2, Play, Upload, Edit3, X, Music, ArrowRight, FileText, Download, Check, CheckSquare } from 'lucide-react';
 import { Song, Order, OrderItem } from '../types';
@@ -348,6 +349,7 @@ function OrderDetail({ order, songsById, onBack, onOpen, onSelectSong, onPlayQue
   const allIds = order.items.map(i => i.id);
   const songItemIds = order.items.filter(i => isSongItem(i) && i.songId && songsById.has(i.songId)).map(i => i.id);
 
+  const longPress = useLongPress();
   const patchItem = (id: string, patch: Partial<OrderItem>) => save({ items: order.items.map(i => (i.id === id ? { ...i, ...patch } : i)) });
 
   const removeItems = (ids: string[]) => {
@@ -540,7 +542,7 @@ function OrderDetail({ order, songsById, onBack, onOpen, onSelectSong, onPlayQue
                       </button>
                     ) : view.showHandles ? handle : <span className="w-1 flex-shrink-0" />}
                     <span className="w-4 text-center text-[10px] font-bold flex-shrink-0" style={{ color: 'var(--text-muted)' }}>{index + 1}</span>
-                    <button onClick={() => (view.selectMode ? view.toggleSelect(item.id) : setEditingId(item.id))} className="flex-1 text-left min-w-0">
+                    <button {...longPress(() => { if (!view.selectMode) view.startSelect(item.id); })} onClick={() => (view.selectMode ? view.toggleSelect(item.id) : setEditingId(item.id))} className="flex-1 text-left min-w-0">
                       <div className="font-semibold text-sm truncate">{isSong ? '🎵' : '🎤'} {item.title}</div>
                       <div className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
                         {[sched.starts[index] ? `${sched.starts[index]}${mins > 0 ? ` · ${mins} min` : ''}` : (mins > 0 ? `${mins} min` : ''), item.person, isSong && tone ? `Tono ${tone}${item.transposition ? ` (${formatSemitones(item.transposition)})` : ''}` : '', item.text ? item.text.split('\n')[0] : ''].filter(Boolean).join(' · ') || (isSong ? song?.artist : 'Toca para agregar responsable o detalle')}

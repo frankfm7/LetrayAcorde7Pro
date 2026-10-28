@@ -12,7 +12,7 @@ export default function HymnalDefaultsPicker({ detail, autoNumber, start, hideNu
   const style = { backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' };
   return (
     <div className="space-y-3">
-      <label className="text-xs font-bold block uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Detalle y numeración del himnario</label>
+      <label className="text-xs font-bold block uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Detalle y numeración del cancionero</label>
       <div>
         <span className="text-xs font-semibold mb-1 block" style={{ color: 'var(--text-muted)' }}>Detalle para todas las canciones</span>
         <input type="text" className={field} style={style} maxLength={60} value={detail} onChange={e => onChange({ detail: e.target.value })} placeholder="Ej: Himnario Bautista, Himno Cala" />

@@ -90,7 +90,7 @@ export default function ToolsMenu({ onClose, onNavigate, onExportClick, onImport
                 <BookMarked size={24} style={{ color: 'var(--accent)' }} />
               </div>
               <div className="flex-1">
-                <div className="font-semibold">Himnarios Oficiales</div>
+                <div className="font-semibold">Cancioneros Oficiales</div>
                 <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Cancioneros de la comunidad, solo lectura</div>
               </div>
             </button>

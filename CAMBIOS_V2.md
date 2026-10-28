@@ -277,3 +277,12 @@ create policy "subir" on community_songs for insert to authenticated with check 
 # Versión 2.19
 
 - **Himnarios Oficiales**: `src/lib/officialHymnals.ts`, `src/pages/OfficialHymnalsPage.tsx`, acceso en Menú+ (solo con sesión), tercera pestaña en Buscar. `AuthContext` ahora expone `isAdmin` (lee `profiles.is_admin`). SQL de `official_songs` y sus reglas RLS en `supabase_official_songs.sql`.
+
+---
+
+# Versión 2.20
+
+- **Selección múltiple**: clic largo sobre una canción activa la selección (cancioneros, listas y órdenes, y cancioneros oficiales). Barra superior con "N seleccionados", X para cancelar, "Todos/Ninguno" y acciones (Eliminar, Compartir, Agregar a lista, Favorito, Exportar). "Agregar a lista" acepta varias canciones.
+- **Cancioneros oficiales**: botón "Importar a la base de datos" (admin) con A) una canción y B) archivo JSON/TXT/CSV con todas las canciones (por tandas de 300, sin límite); edición por lotes (cambiar idioma, mover a otro cancionero, eliminar); "Descargar cancionero completo" para todos (se guarda en Mis Canciones, localStorage).
+- Textos: "himno/himnario" → "canción/cancionero" en la interfaz (los nombres propios no se tocan).
+- Archivos nuevos: `src/hooks/useLongPress.ts`, `src/components/SelectionBar.tsx`, `src/utils/officialImport.ts`.
